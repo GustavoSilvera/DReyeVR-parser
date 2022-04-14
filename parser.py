@@ -2,7 +2,14 @@ import os
 from typing import Dict, Iterable, List, Any, Optional, Tuple
 import time
 import pandas as pd
-from utils import process_UE4_string_to_value, split_along_subgroup, flatten_dict
+from utils import (
+    process_UE4_string_to_value,
+    split_along_subgroup,
+    flatten_dict,
+    convert_to_np,
+    check_periph,
+    convert_to_list,
+)
 import numpy as np
 
 # used as the dictionary key when the data has no explicit title (ie. included as raw array)
@@ -26,7 +33,9 @@ def parse_row(
     data[title] = working_map  # ensure this working set contributes to the larger set
 
     if t != 0:
-        if "t" not in working_map:
+        if (
+            "t" not in working_map
+        ):  # in case we need to also link the time associated with this
             working_map["t"] = []
         working_map["t"].append(t)
     subtitle: str = ""  # subtitle for elements within the dictionary
@@ -66,7 +75,6 @@ def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
         L: int = len(data["TimestampCarla"][_no_title_key])
     for k in data.keys():
         if k == "CustomActor":
-            # TODO
             continue
         if isinstance(data[k], dict):
             validate(data[k], L)
@@ -74,6 +82,11 @@ def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
             assert len(data[k]) == L or len(data[k]) == L - 1
         else:
             raise NotImplementedError
+
+    # ensure the custom actor data is also good
+    if "CustomActor" in data:
+        CA_lens = [len(x) for x in data["CustomActor"].values()]
+        assert min(CA_lens) == max(CA_lens)  # all same lens
 
 
 def parse_file(
@@ -101,11 +114,19 @@ def parse_file(
                 data_line: str = line.strip(DReyeVR_CA).strip("\n")
                 t = data["TimestampCarla"][_no_title_key][-1]  # get carla time
                 parse_row(data, data_line, title="CustomActor", t=t)
+                validate(data)
 
             # print status
             if i % 500 == 0:
                 t: float = time.time() - start_t
                 print(f"Lines read: {i} @ {t:.3f}s", end="\r", flush=True)
+
+    data = convert_to_np(data)
+
+    # check for periph data
+    data = check_periph(data)
+
+    data = convert_to_list(data)
 
     n: int = len(data["TimestampCarla"][_no_title_key])
     print(f"successfully read {n} frames in {t:.3f}s")
@@ -121,5 +142,6 @@ def data_to_df(data: Dict[str, Any]) -> pd.DataFrame:
     data = flatten_dict(data)
     lens = [len(x) for x in data.values()]
     assert min(lens) == max(lens)  # all lengths are equal!
+    # NOTE: pandas can't haneld high dimensional np arrays
     df = pd.DataFrame.from_dict(data)
     return df
