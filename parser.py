@@ -1,14 +1,9 @@
 import os
-from typing import Dict, Iterable, List, Any, Optional, Tuple
+from typing import Dict, List, Any, Optional
 import time
-import pandas as pd
 from utils import (
     process_UE4_string_to_value,
-    split_along_subgroup,
-    flatten_dict,
     convert_to_np,
-    check_periph,
-    convert_to_list,
 )
 import numpy as np
 
@@ -89,16 +84,19 @@ def validate(data: Dict[str, Any], L: Optional[int] = None) -> None:
         assert min(CA_lens) == max(CA_lens)  # all same lens
 
 
-def parse_file(
-    path: str, return_df: Optional[bool] = True
-) -> Dict[str, Any] or List[pd.DataFrame]:
+def parse_file(path: str) -> Dict[str, np.ndarray or dict]:
+    # this function reads in a DReyeVR recording file and parses every line to return
+    # a dictionary following the parser structure depending on the group types
+
     assert os.path.exists(path)
     print(f"Reading DReyeVR recording file: {path}")
 
     data: Dict[str, List[Any]] = {}
 
+    # these are the group types we are using for now
     DReyeVR_core: str = "  [DReyeVR]"
     DReyeVR_CA: str = "  [DReyeVR_CA]"
+
     with open(path) as f:
         start_t: float = time.time()
         for i, line in enumerate(f.readlines()):
@@ -121,27 +119,9 @@ def parse_file(
                 t: float = time.time() - start_t
                 print(f"Lines read: {i} @ {t:.3f}s", end="\r", flush=True)
 
-    data = convert_to_np(data)
-
-    # check for periph data
-    data = check_periph(data)
-
-    data = convert_to_list(data)
-
     n: int = len(data["TimestampCarla"][_no_title_key])
-    print(f"successfully read {n} frames in {t:.3f}s")
-    if return_df:
-        # need to split along groups so all data lengths are the same
-        data_groups = split_along_subgroup(data, ["CustomActor"])
-        data_groups_df: List[pd.DataFrame] = [data_to_df(x) for x in data_groups]
-        return data_groups_df
+    print(f"successfully read {n} frames in {time.time() - start_t:.3f}s")
+
+    # TODO: do everything in np from the get-go rather than convert at the end
+    data = convert_to_np(data)
     return data
-
-
-def data_to_df(data: Dict[str, Any]) -> pd.DataFrame:
-    data = flatten_dict(data)
-    lens = [len(x) for x in data.values()]
-    assert min(lens) == max(lens)  # all lengths are equal!
-    # NOTE: pandas can't haneld high dimensional np arrays
-    df = pd.DataFrame.from_dict(data)
-    return df

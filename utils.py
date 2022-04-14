@@ -1,5 +1,7 @@
 from typing import Dict, List, Any, Optional, Tuple
 import numpy as np
+import pandas as pd
+import time
 
 
 def flatten_dict(
@@ -76,9 +78,10 @@ def convert_to_list(data: Dict[str, np.ndarray or dict]) -> Dict[str, list or di
     return list_data
 
 
-def check_periph(data: Dict[str, Any]) -> Dict[str, Any]:
+def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray]]:
     # first determine if we have a legacy periph recording or not
     assert "UserInputs" in data
+    start_t: float = time.time()
     periph_keys: List[str] = [
         "gaze2target_pitch",
         "gaze2target_yaw",
@@ -88,16 +91,14 @@ def check_periph(data: Dict[str, Any]) -> Dict[str, Any]:
         "ButtonPressed",
     ]
 
+    PeriphData: Dict[str, np.ndarray] = None
+
     if "gaze2target_pitch" in data["UserInputs"]:
         # using legacy periph, extract them from UserInputs
-        data["PeriphData"] = {k: data["UserInputs"].pop(k) for k in periph_keys}
+        PeriphData = {k: data["UserInputs"].pop(k) for k in periph_keys}
     elif "CustomActor" in data and "PeriphTarget" in data["CustomActor"]["Name"]:
         # using modern periph system, extract from implicit representation
         PeriphData: Dict[str, Any] = {}
-        # compute all the real data from implicit representation
-        PeriphData["ButtonPressed"] = (  # logical or for turn signals
-            data["UserInputs"]["TurnSignalLeft"] | data["UserInputs"]["TurnSignalRight"]
-        )
 
         # need to only extract the Custom Actor data when it is a PeriphTarget
         t = len(data["TimestampCarla"]["data"])  # all the frames
@@ -158,17 +159,20 @@ def check_periph(data: Dict[str, Any]) -> Dict[str, Any]:
 
         PeriphData["LightOn"] = Visibility
 
-        # finally assign to the main dict
-        data["PeriphData"] = PeriphData
+        # compute all the real data from implicit representation
+        PeriphData["ButtonPressed"] = (  # logical or for turn signals
+            data["UserInputs"]["TurnSignalLeft"] | data["UserInputs"]["TurnSignalRight"]
+        )
 
     else:
         # no periph in this recording
         pass
-    if "PeriphData" in data:
+    if PeriphData is not None:
         # ensure validation
-        lens: List[int] = [len(x) for x in data["PeriphData"].values()]
+        lens: List[int] = [len(x) for x in PeriphData.values()]
         assert max(lens) == min(lens)
-    return data
+        print(f"gathered periph data in {time.time() - start_t:.3f}s")
+    return PeriphData
 
 
 def get_angles(dir1: np.ndarray, dir2: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
@@ -205,3 +209,15 @@ def get_angles(dir1: np.ndarray, dir2: np.ndarray) -> Tuple[np.ndarray, np.ndarr
     pitch = np.arctan2(dir2_z2, dir2_x2)
 
     return (pitch, yaw)
+
+
+def convert_to_df(data: Dict[str, Any]) -> pd.DataFrame:
+    start_t: float = time.time()
+    data = convert_to_list(data)
+    data = flatten_dict(data)
+    lens = [len(x) for x in data.values()]
+    assert min(lens) == max(lens)  # all lengths are equal!
+    # NOTE: pandas can't haneld high dimensional np arrays, so we just use lists
+    df = pd.DataFrame.from_dict(data)
+    print(f"created DReyeVR df in {time.time() - start_t:.3f}s")
+    return df
