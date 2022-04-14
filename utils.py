@@ -1,7 +1,12 @@
-from typing import Dict, List, Any, Optional, Tuple
+from typing import Callable, Dict, List, Any, Optional, Tuple
 import numpy as np
 import pandas as pd
 import time
+
+
+def get_good_idxs(arr: np.ndarray, criteria: Callable[[Any], bool]) -> np.ndarray:
+    good_idxs = np.where(criteria(arr) == True)
+    return good_idxs
 
 
 def flatten_dict(
