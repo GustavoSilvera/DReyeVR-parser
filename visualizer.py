@@ -2,6 +2,8 @@ from typing import Optional, Tuple
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
+from mpl_toolkits.mplot3d import Axes3D
+
 import os
 
 mpl.use("Agg")
@@ -152,3 +154,56 @@ def save_figure_to_file(
     fig.savefig(os.path.join(dir_path, filename))
     plt.close(fig)
     print(f"output figure to {filename}")
+
+
+def plot_vector3D_vs_time(xyz: np.ndarray, t: np.ndarray, title: str) -> None:
+    n = len(t)
+    assert xyz.shape == (n, 3)
+    assert t.shape == (n,)
+    fig = plt.figure()
+    gs = fig.add_gridspec(3, hspace=0)
+    axs = gs.subplots(sharex=True, sharey=False)
+    x = xyz[:, 0]
+    y = xyz[:, 1]
+    z = xyz[:, 2]
+    fig.suptitle(title)
+    axs[0].plot(t, x)
+    axs[0].set(ylabel="X")
+    axs[1].plot(t, y)
+    axs[1].set(ylabel="Y")
+    axs[2].plot(t, z)
+    axs[2].set(ylabel="Z")
+    filename: str = f"{title}.png"
+    save_figure_to_file(fig, filename, "results")
+
+
+def plot_3Dt(
+    xyz: np.ndarray,
+    t: np.ndarray,
+    title: Optional[str] = None,
+    axes_titles: Optional[Tuple[str]] = ("X", "Y", "Z"),
+) -> None:
+    try:
+        mpl.use("TkAgg")
+    except Exception as e:
+        print(e)
+        return
+    n = len(t)
+    assert xyz.shape == (n, 3)
+    assert t.shape == (n,)
+    fig = plt.figure(figsize=(4, 4))
+    ax = fig.add_subplot(111, projection="3d")
+    x = xyz[:, 0]
+    y = xyz[:, 1]
+    z = xyz[:, 2]
+    plot = ax.scatter(x, y, z, c=t)
+    cb = plt.colorbar(plot, pad=0.2)
+    # cb.set_ticklabels(["start", "end"])
+    if title is not None:
+        ax.set_title(title)
+    assert len(axes_titles) == 3
+    ax.set_xlabel(axes_titles[0])
+    ax.set_ylabel(axes_titles[1])
+    ax.set_zlabel(axes_titles[2])
+    plt.show()
+    mpl.use("Agg")  # non gui-based

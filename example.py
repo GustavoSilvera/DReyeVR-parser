@@ -1,3 +1,4 @@
+from matplotlib.pyplot import axes
 import pandas as pd
 from typing import Dict, List, Any
 from parser import parse_file
@@ -9,7 +10,7 @@ from utils import (
     fill_gaps,
     compute_YP,
 )
-from visualizer import plot_versus, plot_histogram2d
+from visualizer import plot_versus, plot_histogram2d, plot_vector3D_vs_time, plot_3Dt
 import numpy as np
 import argparse
 
@@ -130,4 +131,14 @@ if __name__ == "__main__":
         units_x="deg",
         units_y="deg",
         bins=100,
+    )
+
+    """plot 3D position over time"""
+    pos3D = data["EgoVariables"]["VehicleLoc"]
+    plot_vector3D_vs_time(pos3D, t, "EgoPos XYZ")
+    # found that the first ~50 is kinda garbage, just omit them
+    omit_front: int = 50
+    plot_vector3D_vs_time(pos3D[omit_front:], t[omit_front:], "EgoPos XYZ (50:)")
+    plot_3Dt(
+        xyz=pos3D[omit_front:], t=t[omit_front:], title="Vehicle position over time"
     )
