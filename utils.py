@@ -83,6 +83,84 @@ def convert_to_list(data: Dict[str, np.ndarray or dict]) -> Dict[str, list or di
     return list_data
 
 
+def normalize(arr: np.ndarray, axis=1) -> np.ndarray:
+    # normalize arr
+    arr = (arr.T / (np.linalg.norm(arr, axis=axis))).T
+    assert np.allclose(np.linalg.norm(arr, axis=axis), 1, 0.0001)
+    return arr
+
+
+def VectorFromRotator(arr: np.ndarray) -> np.ndarray:
+    # implementing FRotator::Vector()
+    n = len(arr)
+    assert arr.shape == (n, 3)
+    # note this FRotator holds degrees as (pitch, yaw, roll)
+    pitch: np.ndarray = arr[:, 0]
+    yaw: np.ndarray = arr[:, 1]
+    roll: np.ndarray = arr[:, 2]  # not needed
+    CP = np.cos(pitch)
+    SP = np.sin(pitch)
+    CY = np.cos(yaw)
+    SY = np.sin(yaw)
+    vec = np.array([CP * CY, CP * SY, SP]).T
+    assert vec.shape == (n, 3)
+    return vec
+
+
+def RotateVector(vec: np.ndarray, rot: np.ndarray) -> np.ndarray:
+    # implementing FRotator::RotateVector()
+    # https://docs.unrealengine.com/4.27/en-US/API/Runtime/Core/Math/FRotator/RotateVector/
+    n = len(vec)
+    assert vec.shape == (n, 3)
+    assert rot.shape == (n, 3)  # rotator is in degrees (pitch, yaw, roll)
+    # rotmat = np.zeros((n, 3, 3)) # creating rotation matrices
+    pitch: np.ndarray = rot[:, 0]
+    yaw: np.ndarray = rot[:, 1]
+    roll: np.ndarray = rot[:, 2]
+    CP = np.cos(pitch)
+    SP = np.sin(pitch)
+    CY = np.cos(yaw)
+    SY = np.sin(yaw)
+    CR = np.cos(roll)
+    SR = np.sin(roll)
+    ZERO = np.zeros(n)
+    ONE = np.ones(n)
+    # create the big rotation matrix for each rotator in rot from euler angles
+    # http://planning.cs.uiuc.edu/node102.html
+    yaw_rotmat = np.array(
+        [
+            [CY, -SY, ZERO],  # this is
+            [SY, CY, ZERO],  # the yaw (counterclockwise)
+            [ZERO, ZERO, ONE],  # rottation matrix
+        ]
+    )
+    yaw_rotmat = np.moveaxis(yaw_rotmat, 2, 0)
+    assert yaw_rotmat.shape == (n, 3, 3)
+    pitch_rotmat = np.array(
+        [
+            [CP, ZERO, SP],  # this is
+            [ZERO, ONE, ZERO],  # the pitch (counterclockwise)
+            [-SP, ZERO, CP],  # rotation matrix
+        ]
+    )
+    pitch_rotmat = np.moveaxis(pitch_rotmat, 2, 0)
+    assert pitch_rotmat.shape == (n, 3, 3)
+    roll_rotmat = np.array(
+        [
+            [ONE, ZERO, ZERO],  # this is
+            [ZERO, CR, -SR],  # the roll (counterclockwise)
+            [ZERO, SR, CR],  # rotation matrix
+        ]
+    )
+    roll_rotmat = np.moveaxis(roll_rotmat, 2, 0)
+    assert roll_rotmat.shape == (n, 3, 3)
+    rotmat = np.matmul(yaw_rotmat, np.matmul(pitch_rotmat, roll_rotmat))
+    # apply the rotation matrices to the vector
+    rotated = np.array([np.matmul(rotmat[i], vec[i]) for i in range(n)])
+    assert rotated.shape == (n, 3)
+    return rotated
+
+
 def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray]]:
     # first determine if we have a legacy periph recording or not
     assert "UserInputs" in data
@@ -136,26 +214,22 @@ def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray
             extrapolated_periphtarget_location.shape
             == data["EgoVariables"]["CameraLocAbs"].shape
         )
-        RotVecDirection: np.ndarray = (
+        RotVecDirection: np.ndarray = normalize(
             extrapolated_periphtarget_location - data["EgoVariables"]["CameraLocAbs"]
         )
 
-        # normalize RotVecDirection
-        RotVecDirection = (
-            RotVecDirection.T / np.linalg.norm(RotVecDirection, axis=1)
-        ).T
-        assert np.allclose(np.linalg.norm(RotVecDirection, axis=1), 1, 0.0001)
+        GazeDir = normalize(
+            RotateVector(
+                vec=data["EyeTracker"]["COMBINEDGazeDir"],
+                rot=data["EgoVariables"]["CameraRotAbs"],
+            )
+        )
 
-        # TODO: apply the same "RotateVector" transformation from CameraRotation to the gaze dir
-        GazeVec = data["EyeTracker"]["COMBINEDGazeDir"]
-        # TODO: normalize gaze vec
-
-        gaze_p, gaze_y = get_angles(GazeVec, RotVecDirection)
+        gaze_p, gaze_y = get_angles(GazeDir, RotVecDirection)
         PeriphData["gaze2target_pitch"] = gaze_p
         PeriphData["gaze2target_yaw"] = gaze_y
 
-        HeadVec = data["EgoVariables"]["CameraRotAbs"]
-        # TODO: normalize head vec
+        HeadVec = normalize(VectorFromRotator(data["EgoVariables"]["CameraRotAbs"]))
 
         head_p, head_y = get_angles(HeadVec, RotVecDirection)
         PeriphData["head2target_pitch"] = head_p
@@ -220,9 +294,34 @@ def convert_to_df(data: Dict[str, Any]) -> pd.DataFrame:
     start_t: float = time.time()
     data = convert_to_list(data)
     data = flatten_dict(data)
+    data = _rename_to_match_downstream(data)
     lens = [len(x) for x in data.values()]
     assert min(lens) == max(lens)  # all lengths are equal!
     # NOTE: pandas can't haneld high dimensional np arrays, so we just use lists
     df = pd.DataFrame.from_dict(data)
     print(f"created DReyeVR df in {time.time() - start_t:.3f}s")
     return df
+
+
+def _rename_to_match_downstream(data: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
+    if "CustomActor_t" in data:
+        return data  # do nothing
+    new_data: Dict[str, List[Any]] = {}
+    for k in data.keys():
+        new_key: str = k
+        if new_key == "TimestampCarla_data":
+            new_key = "TimeElapsed"
+        elif "EyeTracker_" in new_key:
+            new_key = new_key.replace("EyeTracker_", "")
+            groups: List[str] = ["COMBINED", "LEFT", "RIGHT"]
+            for g in groups:
+                if g in new_key:
+                    var_name = new_key.replace(g, "")
+                    new_key = f"{var_name}_{g}"
+        elif "PeriphData" in new_key:
+            new_key = new_key.replace("PeriphData_", "")
+        else:
+            pass  # no key in og df yet
+        new_data[new_key] = data[k]
+    assert len(new_data) == len(data)
+    return new_data

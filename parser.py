@@ -1,6 +1,11 @@
 import os
 from typing import Dict, List, Any, Optional
 import time
+import sys
+
+# allow us to import from this current directory
+sys.path.insert(1, "/".join(__file__.split("/")[:-1]))
+
 from utils import (
     process_UE4_string_to_value,
     convert_to_np,
@@ -94,13 +99,14 @@ def parse_file(path: str) -> Dict[str, np.ndarray or dict]:
     data: Dict[str, List[Any]] = {}
 
     # these are the group types we are using for now
-    DReyeVR_core: str = "  [DReyeVR]"
-    DReyeVR_CA: str = "  [DReyeVR_CA]"
+    DReyeVR_core: str = "[DReyeVR]"
+    DReyeVR_CA: str = "[DReyeVR_CA]"
 
     with open(path) as f:
         start_t: float = time.time()
         for i, line in enumerate(f.readlines()):
-
+            # remove leading spaces
+            line = line.strip(" ")
             # checking the line(s) for core DReyeVR data
             if line[: len(DReyeVR_core)] == DReyeVR_core:
                 data_line: str = line.strip(DReyeVR_core).strip("\n")
