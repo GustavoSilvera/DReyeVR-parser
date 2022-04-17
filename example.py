@@ -10,7 +10,7 @@ from utils import (
     fill_gaps,
     compute_YP,
 )
-from visualizer import plot_versus, plot_histogram2d, plot_vector3D_vs_time, plot_3Dt
+from visualizer import plot_versus, plot_histogram2d, plot_vector_vs_time, plot_3Dt
 import numpy as np
 import argparse
 
@@ -60,7 +60,7 @@ if __name__ == "__main__":
     )
     all_valid_idxs = np.where(all_valid == 1)
     print(f"Total validity proportion: {100 * np.sum(all_valid) / len(all_valid):.3f}%")
-    frames = t[all_valid_idxs]
+    eye_valid_t = t[all_valid_idxs]
 
     plot_versus(
         data_x=t,
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     if (pupil_mm_L < 0).any():  # correct for negatives
         pupil_mm_L = fill_gaps(pupil_mm_L, lambda x: x < 0, mode="mean")
     plot_versus(
-        data_x=t,
+        data_x=eye_valid_t,
         name_x="Time",
         data_y=pupil_mm_L,
         name_y="Left pupil diameter",
@@ -89,7 +89,7 @@ if __name__ == "__main__":
     if (pupil_mm_R < 0).any():  # correct for negatives
         pupil_mm_R = fill_gaps(pupil_mm_R, lambda x: x < 0, mode="mean")
     plot_versus(
-        data_x=t,
+        data_x=eye_valid_t,
         name_x="Time",
         data_y=pupil_mm_R,
         name_y="Right pupil diameter",
@@ -135,10 +135,39 @@ if __name__ == "__main__":
 
     """plot 3D position over time"""
     pos3D = data["EgoVariables"]["VehicleLoc"]
-    plot_vector3D_vs_time(pos3D, t, "EgoPos XYZ")
+    plot_vector_vs_time(pos3D, t, "EgoPos XYZ")
     # found that the first ~50 is kinda garbage, just omit them
     omit_front: int = 50
-    plot_vector3D_vs_time(pos3D[omit_front:], t[omit_front:], "EgoPos XYZ (50:)")
+    plot_vector_vs_time(pos3D[omit_front:], t[omit_front:], "EgoPos XYZ (50:)")
+
     plot_3Dt(
-        xyz=pos3D[omit_front:], t=t[omit_front:], title="Vehicle position over time"
+        xyz=pos3D[omit_front:],
+        t=t[omit_front:],
+        title="Vehicle position over time",
+        interactive=False,  # set to True to move it around
+    )
+
+    """plot pupil position"""
+    pupil_pos_L = eye["LEFTPupilPosition"][all_valid_idxs]
+    plot_vector_vs_time(pupil_pos_L, eye_valid_t, "Left pupil position")
+    plot_histogram2d(
+        data_x=pupil_pos_L[:, 0],
+        data_y=pupil_pos_L[:, 1],
+        name_x="LPupilX",
+        name_y="LPupilY",
+        units_x="",
+        units_y="",
+        bins=100,
+    )
+
+    pupil_pos_R = eye["RIGHTPupilPosition"][all_valid_idxs]
+    plot_vector_vs_time(pupil_pos_R, eye_valid_t, "Right pupil position")
+    plot_histogram2d(
+        data_x=pupil_pos_R[:, 0],
+        data_y=pupil_pos_R[:, 1],
+        name_x="RPupilX",
+        name_y="RPupilY",
+        units_x="",
+        units_y="",
+        bins=100,
     )

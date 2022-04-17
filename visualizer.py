@@ -2,11 +2,12 @@ from typing import Optional, Tuple
 import numpy as np
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
 
 import os
 
 mpl.use("Agg")
+
+results_dir: str = "results"
 
 
 def plot_versus(
@@ -19,7 +20,6 @@ def plot_versus(
     trim: Tuple[int, int] = (0, 0),
     lines: Optional[bool] = False,
     colour: Optional[str] = "r",
-    dir_path: Optional[str] = "results",
 ):
     # trim the starts and end of data
     trim_start, trim_end = trim
@@ -59,7 +59,7 @@ def plot_versus(
     plt.tight_layout()
     filename = name_y + "_vs_" + name_x + ".png" if name_x != "" else name_y + ".png"
     filename = f"{name_y} x {name_x}.png"
-    save_figure_to_file(fig, filename, dir_path)
+    save_figure_to_file(fig, filename)
 
 
 def plot_histogram2d(
@@ -71,7 +71,6 @@ def plot_histogram2d(
     units_y: Optional[str] = None,
     bins: Optional[int] = 50,
     cmap: Optional[str] = "hot",
-    dir_path: Optional[str] = "results",
 ):
     fig = plt.figure()
     plt.hist2d(data_x, data_y, bins=bins, cmap=cmap)
@@ -86,7 +85,7 @@ def plot_histogram2d(
     plt.tight_layout()
     # save to disk
     filename = f"{title}.png"
-    save_figure_to_file(fig, filename, dir_path)
+    save_figure_to_file(fig, filename)
 
 
 def plot_diff(
@@ -101,6 +100,7 @@ def plot_diff(
     dir_path="results",
 ):
     # TODO: refactor
+    raise NotImplementedError
     # trim the starts and end of data
     trim_start, trim_end = trim
     max_size = min(len(subA), len(subB))
@@ -143,7 +143,7 @@ def plot_diff(
 
 
 def save_figure_to_file(
-    fig: plt.Figure, filename: str, dir_path: Optional[str] = None
+    fig: plt.Figure, filename: str, dir_path: Optional[str] = results_dir
 ) -> None:
     # make file and save to disk
     if not os.path.exists(os.path.join(os.getcwd(), dir_path)):
@@ -156,25 +156,25 @@ def save_figure_to_file(
     print(f"output figure to {filename}")
 
 
-def plot_vector3D_vs_time(xyz: np.ndarray, t: np.ndarray, title: str) -> None:
-    n = len(t)
-    assert xyz.shape == (n, 3)
+def plot_vector_vs_time(
+    xyz: np.ndarray,
+    t: np.ndarray,
+    title: str,
+    ax_titles: Optional[Tuple[str]] = ("X", "Y", "Z"),
+) -> None:
+    n, d = xyz.shape
+    assert xyz.shape == (n, d)
     assert t.shape == (n,)
     fig = plt.figure()
-    gs = fig.add_gridspec(3, hspace=0)
-    axs = gs.subplots(sharex=True, sharey=False)
-    x = xyz[:, 0]
-    y = xyz[:, 1]
-    z = xyz[:, 2]
     fig.suptitle(title)
-    axs[0].plot(t, x)
-    axs[0].set(ylabel="X")
-    axs[1].plot(t, y)
-    axs[1].set(ylabel="Y")
-    axs[2].plot(t, z)
-    axs[2].set(ylabel="Z")
+    gs = fig.add_gridspec(d, hspace=0)
+    axs = gs.subplots(sharex=True, sharey=False)
+    for dim in range(d):
+        data_dim = xyz[:, dim]
+        axs[dim].set(ylabel=ax_titles[dim] if dim < len(ax_titles) else "")
+        axs[dim].plot(t, data_dim)
     filename: str = f"{title}.png"
-    save_figure_to_file(fig, filename, "results")
+    save_figure_to_file(fig, filename)
 
 
 def plot_3Dt(
@@ -182,16 +182,18 @@ def plot_3Dt(
     t: np.ndarray,
     title: Optional[str] = None,
     axes_titles: Optional[Tuple[str]] = ("X", "Y", "Z"),
+    interactive: Optional[bool] = False,
 ) -> None:
-    try:
-        mpl.use("TkAgg")
-    except Exception as e:
-        print(e)
-        return
+    if interactive:
+        try:
+            mpl.use("TkAgg")
+        except Exception as e:
+            print(e)
+            return
     n = len(t)
     assert xyz.shape == (n, 3)
     assert t.shape == (n,)
-    fig = plt.figure(figsize=(4, 4))
+    fig = plt.figure(figsize=(10, 10))
     ax = fig.add_subplot(111, projection="3d")
     x = xyz[:, 0]
     y = xyz[:, 1]
@@ -205,5 +207,9 @@ def plot_3Dt(
     ax.set_xlabel(axes_titles[0])
     ax.set_ylabel(axes_titles[1])
     ax.set_zlabel(axes_titles[2])
-    plt.show()
-    mpl.use("Agg")  # non gui-based
+    if interactive:
+        plt.show()
+        mpl.use("Agg")  # back to non gui-based
+    else:
+        filename: str = f"{title}.png"
+        save_figure_to_file(fig, filename)
