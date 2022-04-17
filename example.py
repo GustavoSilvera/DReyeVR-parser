@@ -6,6 +6,7 @@ from utils import (
     convert_to_df,
     split_along_subgroup,
     get_good_idxs,
+    fill_gaps,
 )
 from visualizer import plot_versus
 import numpy as np
@@ -30,11 +31,11 @@ if __name__ == "__main__":
     """parse the file"""
     data: Dict[str, np.ndarray or dict] = parse_file(filename)
 
-    # """append/generate periph data if available"""
-    # # check for periph data
-    # PeriphData = check_for_periph_data(data)
-    # if PeriphData is not None:
-    #     data["PeriphData"] = PeriphData
+    """append/generate periph data if available"""
+    # check for periph data
+    PeriphData = check_for_periph_data(data)
+    if PeriphData is not None:
+        data["PeriphData"] = PeriphData
 
     # """convert to pandas df"""
     # # need to split along groups so all data lengths are the same
@@ -44,33 +45,57 @@ if __name__ == "__main__":
     t: np.ndarray = data["TimestampCarla"]["data"]
 
     """visualize some interesting data!"""
-    pupil_L = data["EyeTracker"]["LEFTPupilDiameter"]
-    # drop invalid data
-    good_pupil_diam = lambda x: x > 0  # need positive diameter
-    good_idxs = get_good_idxs(pupil_L, good_pupil_diam)
-    pupil_L = pupil_L[good_idxs]
-    time_L = t[good_idxs]
+
+    eye = data["EyeTracker"]
+    all_valid = (
+        eye["COMBINEDGazeValid"]
+        & eye["LEFTGazeValid"]
+        & eye["LEFTEyeOpennessValid"]
+        & eye["LEFTPupilPositionValid"]
+        & eye["RIGHTGazeValid"]
+        & eye["RIGHTEyeOpennessValid"]
+        & eye["RIGHTPupilPositionValid"]
+    )
+    all_valid_idxs = np.where(all_valid == 1)
+    print(f"Total validity proportion: {100 * np.sum(all_valid) / len(all_valid):.3f}%")
+    frames = t[all_valid_idxs]
 
     plot_versus(
-        data_x=time_L,
+        data_x=t,
         name_x="Time",
-        data_y=pupil_L,
+        data_y=all_valid,
+        name_y="Confidence (validity)",
+        units_y="",
+        units_x="s",
+        lines=False,
+    )
+
+    pupil_mm_L = eye["LEFTPupilDiameter"][all_valid_idxs]
+    if (pupil_mm_L < 0).any():  # correct for negatives
+        pupil_mm_L = fill_gaps(pupil_mm_L, lambda x: x < 0, mode="mean")
+    plot_versus(
+        data_x=t,
+        name_x="Time",
+        data_y=pupil_mm_L,
         name_y="Left pupil diameter",
         units_y="mm",
         units_x="s",
         lines=True,
     )
 
-    pupil_R = data["EyeTracker"]["RIGHTPupilDiameter"]
-    good_idxs = get_good_idxs(pupil_R, good_pupil_diam)
-    pupil_R = pupil_R[good_idxs]
-    time_R = t[good_idxs]
+    pupil_mm_R = eye["RIGHTPupilDiameter"][all_valid_idxs]
+    if (pupil_mm_R < 0).any():  # correct for negatives
+        pupil_mm_R = fill_gaps(pupil_mm_R, lambda x: x < 0, mode="mean")
     plot_versus(
-        data_x=time_R,
+        data_x=t,
         name_x="Time",
-        data_y=pupil_R,
+        data_y=pupil_mm_R,
         name_y="Right pupil diameter",
         units_y="mm",
         units_x="s",
         lines=True,
     )
+
+    gaze_dir_C = eye["COMBINEDGazeDir"][all_valid_idxs]
+    gaze_dir_L = eye["LEFTGazeDir"][all_valid_idxs]
+    gaze_dir_R = eye["RIGHTGazeDir"][all_valid_idxs]

@@ -4,9 +4,29 @@ import pandas as pd
 import time
 
 
-def get_good_idxs(arr: np.ndarray, criteria: Callable[[Any], bool]) -> np.ndarray:
-    good_idxs = np.where(criteria(arr) == True)
+def get_good_idxs(
+    arr: np.ndarray, criteria: Callable[[np.ndarray, Any], bool]
+) -> np.ndarray:
+    idxs = np.arange(len(arr))
+    good_idxs = np.where(criteria(idxs, arr) == True)
     return good_idxs
+
+
+def fill_gaps(
+    arr: np.ndarray, criteria: Callable[[Any], bool], mode: Optional[str] = "mean"
+) -> np.ndarray:
+    bad_idxs = np.where(criteria(arr) == True)
+    ret = arr
+    for i in bad_idxs[0]:
+        if mode == "mean":
+            lo = max(0, i - 1)
+            hi = min(len(arr) - 1, i + 1)
+            # TODO: ensure not averaging from bad values
+            ret[i] = (ret[lo] + ret[hi]) / 2
+        # TODO: add other modes
+    assert ret.shape == arr.shape
+    assert len(np.where(criteria(ret) == True)[0]) == 0  # no more bad idxs
+    return ret
 
 
 def flatten_dict(
