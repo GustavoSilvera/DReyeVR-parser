@@ -44,7 +44,8 @@ if __name__ == "__main__":
     # data_groups = split_along_subgroup(data, ["CustomActor"])
     # data_groups_df: List[pd.DataFrame] = [convert_to_df(x) for x in data_groups]
 
-    t: np.ndarray = data["TimestampCarla"]["data"]
+    t: np.ndarray = data["TimestampCarla"]["data"] / 1000  # to seconds
+    # now t is in seconds
 
     """visualize some interesting data!"""
 
@@ -167,3 +168,35 @@ if __name__ == "__main__":
         name_y="RPupilY",
         bins=100,
     )
+
+    """compute intrinsic factors"""
+    delta_ts = np.diff(t)  # t is in seconds
+    n: int = len(delta_ts)
+    assert delta_ts.min() > 0  # should always be monotonically increasing!
+    ego_displacement = np.diff(data["EgoVariables"]["VehicleLoc"], axis=0)
+    ego_velocity = (ego_displacement.T / delta_ts).T
+    assert ego_velocity.shape == (n, 3)
+    cmps2mph = 0.0223694  # cm/s to mph
+    speed = np.linalg.norm(ego_velocity, axis=1)  # velocity (3D) to speed (1D)
+    plot_versus(
+        data_x=t[1:],
+        name_x="Time",
+        data_y=cmps2mph * speed,
+        name_y="Ego Speed",
+        units_y="mph",
+        units_x="s",
+        lines=True,
+    )
+
+    ego_accel = (np.diff(ego_velocity, axis=0).T / delta_ts[1:]).T
+    assert ego_accel.shape == (n - 1, 3)
+    plot_versus(
+        data_x=t[2:],
+        name_x="Time",
+        data_y=np.linalg.norm(ego_accel, axis=1),  # accel (3D) to speed (1D)
+        name_y="Ego Accel",
+        units_y="cm/s^2",
+        units_x="s",
+        lines=True,
+    )
+    # jerk, snap, crackle, pop?
