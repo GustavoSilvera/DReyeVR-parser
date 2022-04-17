@@ -155,8 +155,6 @@ if __name__ == "__main__":
         data_y=pupil_pos_L[:, 1],
         name_x="LPupilX",
         name_y="LPupilY",
-        units_x="",
-        units_y="",
         bins=100,
     )
 
@@ -167,7 +165,5 @@ if __name__ == "__main__":
         data_y=pupil_pos_R[:, 1],
         name_x="RPupilX",
         name_y="RPupilY",
-        units_x="",
-        units_y="",
         bins=100,
     )

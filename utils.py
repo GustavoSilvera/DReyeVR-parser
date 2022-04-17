@@ -238,9 +238,20 @@ def check_for_periph_data(data: Dict[str, Any]) -> Optional[Dict[str, np.ndarray
             extrapolated_periphtarget_location - data["EgoVariables"]["CameraLocAbs"]
         )
 
+        # correct COMBINEDGazeDir for invalid (zerovector) gaze vectors
+        # HACK: just replace ZeroVector's with (1, 0, 0)
+
+        CombinedEyeGaze = data["EyeTracker"]["COMBINEDGazeDir"]
+        bad_idxs = np.where(
+            (CombinedEyeGaze[:, 0] == 0)
+            & (CombinedEyeGaze[:, 1] == 0)
+            & (CombinedEyeGaze[:, 2] == 0)
+        )
+        CombinedEyeGaze[bad_idxs] = np.array([1, 0, 0])  # HACK, but works since invalid
+
         GazeDir = normalize(
             RotateVector(
-                vec=data["EyeTracker"]["COMBINEDGazeDir"],
+                vec=CombinedEyeGaze,
                 rot=data["EgoVariables"]["CameraRotAbs"],
             )
         )
