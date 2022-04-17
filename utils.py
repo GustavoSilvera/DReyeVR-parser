@@ -345,3 +345,18 @@ def _rename_to_match_downstream(data: Dict[str, np.ndarray]) -> Dict[str, np.nda
         new_data[new_key] = data[k]
     assert len(new_data) == len(data)
     return new_data
+
+
+def compute_YP(arr: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    # using arr as a matrix of direction vectors
+    n: int = len(arr)
+    assert arr.shape == (n, 3)  # only supports 3D vectors
+    arr_norm = normalize(arr)
+
+    xs = arr_norm[:, 0]
+    ys = arr_norm[:, 1]
+    zs = arr_norm[:, 2]
+
+    gaze_pitches = np.arctan2(zs, xs) * 180 / np.pi
+    gaze_yaws = np.arctan2(ys, xs) * 180 / np.pi
+    return gaze_yaws, gaze_pitches

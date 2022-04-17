@@ -12,8 +12,8 @@ def plot_versus(
     data_y: np.ndarray,
     name_x: Optional[str] = "X",
     name_y: Optional[str] = "Y",
-    units_x: Optional[str] = "",
-    units_y: Optional[str] = "",
+    units_x: Optional[str] = None,
+    units_y: Optional[str] = None,
     trim: Tuple[int, int] = (0, 0),
     lines: Optional[bool] = False,
     colour: Optional[str] = "r",
@@ -31,13 +31,14 @@ def plot_versus(
     # the axis limits and grid lines
     plt.grid(True)
 
-    units_str_x = " (" + units_x + ")" if units_x != "" else ""
-    units_str_y = " (" + units_y + ")" if units_y != "" else ""
+    unit_x_str = f" ({units_x})" if units_x is not None else ""
+    unit_y_str = f" ({units_y})" if units_y is not None else ""
+
     trim_str = " [" + str(trim_start) + ", " + str(trim_end) + "]"
 
     # label your graph, axes, and ticks on each axis
-    plt.xlabel(name_x + units_str_x, fontsize=16)
-    plt.ylabel(name_y + units_str_y, fontsize=16)
+    plt.xlabel(name_x + unit_x_str, fontsize=16)
+    plt.ylabel(name_y + unit_y_str, fontsize=16)
     plt.xticks()
     plt.yticks()
     plt.tick_params(labelsize=15)
@@ -54,16 +55,36 @@ def plot_versus(
 
     # complete the layout, save figure, and show the figure for you to see
     plt.tight_layout()
-    # make file and save to disk
-    if not os.path.exists(os.path.join(os.getcwd(), dir_path)):
-        os.mkdir(dir_path)
     filename = name_y + "_vs_" + name_x + ".png" if name_x != "" else name_y + ".png"
-    filename = filename.lower().replace(
-        " ", "_"
-    )  # all lowercase, use _ instead of spaces
-    fig.savefig(os.path.join(dir_path, filename))
-    plt.close(fig)
-    print(f"output figure to {filename}")
+    filename = f"{name_y} x {name_x}.png"
+    save_figure_to_file(fig, filename, dir_path)
+
+
+def plot_histogram2d(
+    data_x: np.ndarray,
+    data_y: np.ndarray,
+    name_x: Optional[str] = "X",
+    name_y: Optional[str] = "Y",
+    units_x: Optional[str] = None,
+    units_y: Optional[str] = None,
+    bins: Optional[int] = 50,
+    cmap: Optional[str] = "hot",
+    dir_path: Optional[str] = "results",
+):
+    fig = plt.figure()
+    plt.hist2d(data_x, data_y, bins=bins, cmap=cmap)
+    cb = plt.colorbar()
+    cb.set_label("Frequency")
+    title: str = f"{name_x} x {name_y} Histogram2D"
+    plt.title(title)
+    unit_x_str = f" ({units_x})" if units_x is not None else ""
+    unit_y_str = f" ({units_y})" if units_y is not None else ""
+    plt.xlabel(f"{name_x}{unit_x_str}")
+    plt.ylabel(f"{name_y}{unit_y_str}")
+    plt.tight_layout()
+    # save to disk
+    filename = f"{title}.png"
+    save_figure_to_file(fig, filename, dir_path)
 
 
 def plot_diff(
@@ -77,6 +98,7 @@ def plot_diff(
     colour="r",
     dir_path="results",
 ):
+    # TODO: refactor
     # trim the starts and end of data
     trim_start, trim_end = trim
     max_size = min(len(subA), len(subB))
@@ -116,3 +138,17 @@ def plot_diff(
     filename = name_A + "_minus_" + name_B + ".png"
     fig.savefig(os.path.join(dir_path, filename))
     plt.close(fig)
+
+
+def save_figure_to_file(
+    fig: plt.Figure, filename: str, dir_path: Optional[str] = None
+) -> None:
+    # make file and save to disk
+    if not os.path.exists(os.path.join(os.getcwd(), dir_path)):
+        os.mkdir(dir_path)
+    filename: str = filename.lower().replace(
+        " ", "_"
+    )  # all lowercase, use _ instead of spaces
+    fig.savefig(os.path.join(dir_path, filename))
+    plt.close(fig)
+    print(f"output figure to {filename}")

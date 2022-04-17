@@ -7,8 +7,9 @@ from utils import (
     split_along_subgroup,
     get_good_idxs,
     fill_gaps,
+    compute_YP,
 )
-from visualizer import plot_versus
+from visualizer import plot_versus, plot_histogram2d
 import numpy as np
 import argparse
 
@@ -97,5 +98,36 @@ if __name__ == "__main__":
     )
 
     gaze_dir_C = eye["COMBINEDGazeDir"][all_valid_idxs]
+    gaze_yaw_C, gaze_pitch_C = compute_YP(gaze_dir_C)
+    plot_histogram2d(
+        data_x=gaze_yaw_C,
+        data_y=gaze_pitch_C,
+        name_x="yaw_C",
+        name_y="pitch_C",
+        units_x="deg",
+        units_y="deg",
+        bins=100,
+    )
     gaze_dir_L = eye["LEFTGazeDir"][all_valid_idxs]
+    gaze_yaw_L, gaze_pitch_L = compute_YP(gaze_dir_L)
+    plot_histogram2d(
+        data_x=gaze_yaw_L,
+        data_y=gaze_pitch_L,
+        name_x="yaw_L",
+        name_y="pitch_L",
+        units_x="deg",
+        units_y="deg",
+        bins=100,
+    )
+
     gaze_dir_R = eye["RIGHTGazeDir"][all_valid_idxs]
+    gaze_yaw_R, gaze_pitch_R = compute_YP(gaze_dir_R)
+    plot_histogram2d(
+        data_x=gaze_yaw_R,
+        data_y=gaze_pitch_R,
+        name_x="yaw_R",
+        name_y="pitch_R",
+        units_x="deg",
+        units_y="deg",
+        bins=100,
+    )
