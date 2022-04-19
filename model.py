@@ -1,10 +1,12 @@
 import time
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
 import torch
 from sklearn import svm
 from torch import nn
 from torch.utils.data import DataLoader, TensorDataset
+from captum.attr import IntegratedGradients
 import argparse
 
 
@@ -14,9 +16,16 @@ from utils import (
     check_for_periph_data,
     fill_gaps,
     filter_to_idxs,
+    singleify,
     trim_data,
+    flatten_dict,
 )
-from visualizer import plot_versus, plot_vector_vs_time, set_results_dir
+from visualizer import (
+    plot_versus,
+    plot_vector_vs_time,
+    save_figure_to_file,
+    set_results_dir,
+)
 
 set_results_dir("results.model")
 
@@ -76,49 +85,51 @@ data["EgoVariables"]["Velocity"] = ego_velocity
 
 # trim data bounds
 data = trim_data(data, (50, 100))
-t = data["TimestampCarla"]["data"] / 1000  # ms to s
+data = flatten_dict(data)
+data = singleify(data)  # so individual axes are accessible via _ notation
+t = data["TimestampCarla_data"] / 1000  # ms to s
 
-Y = data["UserInputs"]["Steering"]
+Y = data["UserInputs_Steering"]
 
 # Split sampled data into training and test
-X = np.array(
-    [
-        data["EgoVariables"]["VehicleVel"],
-        data["EgoVariables"]["Velocity"][:, 0],
-        data["EgoVariables"]["Velocity"][:, 1],
-        # data["EgoVariables"]["Velocity"][:, 2], # causes nan's
-        # data["EyeTracker"]["COMBINEDGazeDir"][:, 0], # highly discrete, should be ~1
-        data["EyeTracker"]["COMBINEDGazeDir"][:, 1],
-        data["EyeTracker"]["COMBINEDGazeDir"][:, 2],
-        # data["EyeTracker"]["LEFTGazeDir"][:, 0], # highly discrete, should be ~1
-        data["EyeTracker"]["LEFTGazeDir"][:, 1],
-        data["EyeTracker"]["LEFTGazeDir"][:, 2],
-        # data["EyeTracker"]["RIGHTGazeDir"][:, 0], # highly discrete, should be ~1
-        data["EyeTracker"]["RIGHTGazeDir"][:, 1],
-        data["EyeTracker"]["RIGHTGazeDir"][:, 2],
-        data["EyeTracker"]["LEFTPupilDiameter"],
-        data["EyeTracker"]["LEFTPupilPosition"][:, 0],
-        data["EyeTracker"]["LEFTPupilPosition"][:, 1],
-        data["EyeTracker"]["RIGHTPupilDiameter"],
-        data["EyeTracker"]["RIGHTPupilPosition"][:, 0],
-        data["EyeTracker"]["RIGHTPupilPosition"][:, 1],
-        data["EgoVariables"]["VehicleLoc"][:, 0],
-        data["EgoVariables"]["VehicleLoc"][:, 1],
-        # data["EgoVariables"]["VehicleLoc"][:, 2], # z position is mostly flat
-        # data["EgoVariables"]["VehicleRot"][:, 0], # rotators are just weird (non wrapped)
-        # data["EgoVariables"]["VehicleRot"][:, 1], # rotators are just weird (non wrapped)
-        # data["EgoVariables"]["VehicleRot"][:, 2], # rotators are just weird (non wrapped)
-        data["EgoVariables"]["CameraLoc"][:, 0],
-        data["EgoVariables"]["CameraLoc"][:, 1],
-        # data["EgoVariables"]["CameraLoc"][:, 2], # z position is mostly flat
-        data["EgoVariables"]["CameraRot"][:, 0],  # relative rotators are ok
-        data["EgoVariables"]["CameraRot"][:, 1],  # relative rotators are ok
-        data["EgoVariables"]["CameraRot"][:, 2],  # relative rotators are ok
-        data["UserInputs"]["Throttle"],
-        # data["UserInputs"]["Steering"],
-        data["UserInputs"]["Brake"],
-    ]
-).T
+
+feature_names = [
+    "EgoVariables_VehicleVel",
+    "EgoVariables_Velocity_0",
+    "EgoVariables_Velocity_1",
+    # "EgoVariables_Velocity_2",  # causes nan's
+    # "EyeTracker_COMBINEDGazeDir_0",  # not interesting, should be ~1
+    "EyeTracker_COMBINEDGazeDir_1",
+    "EyeTracker_COMBINEDGazeDir_2",
+    # "EyeTracker_LEFTGazeDir_0",  # not interesting, should be ~1
+    "EyeTracker_LEFTGazeDir_1",
+    "EyeTracker_LEFTGazeDir_2",
+    # "EyeTracker_RIGHTGazeDir_0",  # not interesting, should be ~1
+    "EyeTracker_RIGHTGazeDir_1",
+    "EyeTracker_RIGHTGazeDir_2",
+    "EyeTracker_LEFTPupilDiameter",
+    "EyeTracker_LEFTPupilPosition_0",
+    "EyeTracker_LEFTPupilPosition_1",
+    "EyeTracker_RIGHTPupilDiameter",
+    "EyeTracker_RIGHTPupilPosition_0",
+    "EyeTracker_RIGHTPupilPosition_1",
+    "EgoVariables_VehicleLoc_0",
+    "EgoVariables_VehicleLoc_1",
+    # "EgoVariables_VehicleLoc_2", # z position mostly flat
+    # "EgoVariables_VehicleRot_0", # unwrapped absolute rotators
+    # "EgoVariables_VehicleRot_1", # unwrapped absolute rotators
+    # "EgoVariables_VehicleRot_2", # unwrapped absolute rotators
+    "EgoVariables_CameraLoc_0",
+    "EgoVariables_CameraLoc_1",
+    "EgoVariables_CameraLoc_2",
+    "EgoVariables_CameraRot_0",  # relative rotators are ok
+    "EgoVariables_CameraRot_1",  # relative rotators are ok
+    "EgoVariables_CameraRot_2",  # relative rotators are ok
+    "UserInputs_Throttle",
+    "UserInputs_Brake",
+]
+
+X = np.array([data[feature_key] for feature_key in feature_names]).T
 
 # make test/train split
 p = 0.2
@@ -152,7 +163,7 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
 
 # optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.01)
 
-nb_epochs = 20
+nb_epochs = 25
 acc_thresh = np.mean(np.abs(test_split["Y"]))
 for epoch in range(nb_epochs):
     start_t = time.time()
@@ -222,3 +233,34 @@ pred_actual = np.array([y_pred, Y]).T
 plot_vector_vs_time(
     xyz=pred_actual, t=t, title="predicted vs actual", ax_titles=["pred", "actual"]
 )
+
+
+def visualize_importances(
+    feature_names,
+    title="Average Feature Importances",
+    axis_title="Features",
+):
+    print("Visualizing feature importances...")
+    # Helper method to print importances and visualize distribution
+    ig = IntegratedGradients(model)
+    test_input_tensor = torch.Tensor(test_split["X"])
+    test_input_tensor.requires_grad_()
+    attr, delta = ig.attribute(
+        test_input_tensor, target=0, return_convergence_delta=True
+    )
+    attr = attr.detach().numpy()
+    importances = np.mean(attr, axis=0)
+    for i in range(len(feature_names)):
+        print(feature_names[i], ": ", "%.3f" % (importances[i]))
+    x_pos = np.arange(len(feature_names))
+
+    fig = plt.figure(figsize=(12, 8))
+    plt.bar(x_pos, importances, align="center")
+    plt.xticks(x_pos, feature_names, wrap=True, rotation=80)
+    plt.xlabel(axis_title)
+    plt.title(title)
+    save_figure_to_file(fig, "feature_importance.png")
+
+
+feature_names_small = [f[f.find("_") + 1 :] for f in feature_names]
+visualize_importances(feature_names_small)

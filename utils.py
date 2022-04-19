@@ -429,3 +429,19 @@ def trim_data(data: Dict[str, Any], trim_bounds: Tuple[int, int]) -> Dict[str, A
             assert isinstance(data[k], np.ndarray)
             trimmed_data[k] = data[k][trim_bounds[0] : -trim_bounds[1]]
     return trimmed_data
+
+
+def singleify(data):
+    single = {}
+    for k in data.keys():
+        if isinstance(data[k], dict):
+            single[k] = singleify(data[k])
+        else:
+            assert isinstance(data[k], np.ndarray)
+            if len(data[k].shape) > 1:  # beyond 1dimensional
+                _, d = data[k].shape
+                for i in range(d):
+                    single[f"{k}_{i}"] = data[k][:, i]
+            else:
+                single[k] = data[k]
+    return single
