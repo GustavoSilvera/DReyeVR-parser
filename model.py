@@ -17,6 +17,7 @@ from utils import (
     fill_gaps,
     filter_to_idxs,
     singleify,
+    smooth_arr,
     trim_data,
     flatten_dict,
 )
@@ -79,14 +80,47 @@ ego_displacement = np.diff(data["EgoVariables"]["VehicleLoc"], axis=0)
 ego_velocity = (ego_displacement.T / delta_ts).T
 ego_velocity = np.concatenate((np.zeros((1, 3)), ego_velocity))  # include 0 @ t=0
 ego_accel = (np.diff(ego_velocity, axis=0).T / delta_ts).T
-ego_accel = np.concatenate((np.zeros((2, 3)), ego_accel))
+ego_accel = np.concatenate((np.zeros((1, 3)), ego_accel))  # include 0 @ t=0
 data["EgoVariables"]["Velocity"] = ego_velocity
-# data["EgoVariables"]["Accel"] = np.array([0, 0] + ego_accel.tolist())
+data["EgoVariables"]["Accel"] = ego_accel
 
 # trim data bounds
 data = trim_data(data, (50, 100))
 data = flatten_dict(data)
 data = singleify(data)  # so individual axes are accessible via _ notation
+
+# apply data smoothing
+data["EyeTracker_COMBINEDGazeDir_1_s"] = smooth_arr(
+    data["EyeTracker_COMBINEDGazeDir_1"], 20
+)
+data["EyeTracker_COMBINEDGazeDir_2_s"] = smooth_arr(
+    data["EyeTracker_COMBINEDGazeDir_2"], 20
+)
+data["EyeTracker_LEFTGazeDir_1_s"] = smooth_arr(data["EyeTracker_LEFTGazeDir_1"], 20)
+data["EyeTracker_LEFTGazeDir_2_s"] = smooth_arr(data["EyeTracker_LEFTGazeDir_2"], 20)
+data["EyeTracker_RIGHTGazeDir_1_s"] = smooth_arr(data["EyeTracker_RIGHTGazeDir_1"], 20)
+data["EyeTracker_RIGHTGazeDir_2_s"] = smooth_arr(data["EyeTracker_RIGHTGazeDir_2"], 20)
+data["EyeTracker_LEFTPupilDiameter_s"] = smooth_arr(
+    data["EyeTracker_LEFTPupilDiameter"], 20
+)
+data["EyeTracker_LEFTPupilPosition_0_s"] = smooth_arr(
+    data["EyeTracker_LEFTPupilPosition_0"], 20
+)
+data["EyeTracker_LEFTPupilPosition_1_s"] = smooth_arr(
+    data["EyeTracker_LEFTPupilPosition_1"], 20
+)
+data["EyeTracker_RIGHTPupilDiameter_s"] = smooth_arr(
+    data["EyeTracker_RIGHTPupilDiameter"], 20
+)
+data["EyeTracker_RIGHTPupilPosition_0_s"] = smooth_arr(
+    data["EyeTracker_RIGHTPupilPosition_0"], 20
+)
+data["EyeTracker_RIGHTPupilPosition_1_s"] = smooth_arr(
+    data["EyeTracker_RIGHTPupilPosition_1"], 20
+)
+
+
+"""get data!!!"""
 t = data["TimestampCarla_data"] / 1000  # ms to s
 
 Y = data["UserInputs_Steering"]
@@ -95,33 +129,36 @@ Y = data["UserInputs_Steering"]
 
 feature_names = [
     "EgoVariables_VehicleVel",
-    "EgoVariables_Velocity_0",
-    "EgoVariables_Velocity_1",
+    "EgoVariables_Velocity_0",  # dependent on steering
+    "EgoVariables_Velocity_1",  # dependent on steering
     # "EgoVariables_Velocity_2",  # causes nan's
+    # "EgoVariables_Accel_0", # dependent on steering
+    # "EgoVariables_Accel_1", # dependent on steering
+    # "EgoVariables_Accel_2",  # uninteresting
     # "EyeTracker_COMBINEDGazeDir_0",  # not interesting, should be ~1
-    "EyeTracker_COMBINEDGazeDir_1",
-    "EyeTracker_COMBINEDGazeDir_2",
+    # "EyeTracker_COMBINEDGazeDir_1_s", # correlated with LEFT/RIGHT
+    # "EyeTracker_COMBINEDGazeDir_2_s", # correlated with LEFT/RIGHT
     # "EyeTracker_LEFTGazeDir_0",  # not interesting, should be ~1
-    "EyeTracker_LEFTGazeDir_1",
-    "EyeTracker_LEFTGazeDir_2",
+    "EyeTracker_LEFTGazeDir_1_s",
+    "EyeTracker_LEFTGazeDir_2_s",
     # "EyeTracker_RIGHTGazeDir_0",  # not interesting, should be ~1
-    "EyeTracker_RIGHTGazeDir_1",
-    "EyeTracker_RIGHTGazeDir_2",
-    "EyeTracker_LEFTPupilDiameter",
-    "EyeTracker_LEFTPupilPosition_0",
-    "EyeTracker_LEFTPupilPosition_1",
-    "EyeTracker_RIGHTPupilDiameter",
-    "EyeTracker_RIGHTPupilPosition_0",
-    "EyeTracker_RIGHTPupilPosition_1",
-    "EgoVariables_VehicleLoc_0",
-    "EgoVariables_VehicleLoc_1",
+    "EyeTracker_RIGHTGazeDir_1_s",
+    "EyeTracker_RIGHTGazeDir_2_s",
+    "EyeTracker_LEFTPupilDiameter_s",
+    "EyeTracker_LEFTPupilPosition_0_s",
+    "EyeTracker_LEFTPupilPosition_1_s",
+    "EyeTracker_RIGHTPupilDiameter_s",
+    "EyeTracker_RIGHTPupilPosition_0_s",
+    "EyeTracker_RIGHTPupilPosition_1_s",
+    # "EgoVariables_VehicleLoc_0",  # dependent on steering
+    # "EgoVariables_VehicleLoc_1",  # dependent on steering
     # "EgoVariables_VehicleLoc_2", # z position mostly flat
     # "EgoVariables_VehicleRot_0", # unwrapped absolute rotators
     # "EgoVariables_VehicleRot_1", # unwrapped absolute rotators
     # "EgoVariables_VehicleRot_2", # unwrapped absolute rotators
     "EgoVariables_CameraLoc_0",
     "EgoVariables_CameraLoc_1",
-    "EgoVariables_CameraLoc_2",
+    # "EgoVariables_CameraLoc_2", # mostly flat
     "EgoVariables_CameraRot_0",  # relative rotators are ok
     "EgoVariables_CameraRot_1",  # relative rotators are ok
     "EgoVariables_CameraRot_2",  # relative rotators are ok
@@ -146,6 +183,7 @@ class DrivingModel(torch.nn.Module):
         self.network = torch.nn.Sequential(
             nn.Linear(self.in_dim, 64),
             nn.Linear(64, 128),
+            nn.Linear(128, 128),
             nn.Linear(128, 64),
             nn.Linear(64, self.out_dim),
         )
@@ -249,12 +287,13 @@ def visualize_importances(
         test_input_tensor, target=0, return_convergence_delta=True
     )
     attr = attr.detach().numpy()
-    importances = np.mean(attr, axis=0)
+    importances = np.mean(attr, axis=0) / np.abs(np.mean(attr))
     for i in range(len(feature_names)):
-        print(feature_names[i], ": ", "%.3f" % (importances[i]))
+        print(f"{feature_names[i]} : {importances[i]:.3f}")
     x_pos = np.arange(len(feature_names))
 
     fig = plt.figure(figsize=(12, 8))
+    plt.grid(True)
     plt.bar(x_pos, importances, align="center")
     plt.xticks(x_pos, feature_names, wrap=True, rotation=80)
     plt.xlabel(axis_title)

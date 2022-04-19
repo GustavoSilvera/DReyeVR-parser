@@ -13,6 +13,7 @@ results_dir: str = "results"
 def set_results_dir(new_dir: str) -> None:
     global results_dir
     results_dir = new_dir
+    os.makedirs(results_dir, exist_ok=True)
 
 
 def plot_versus(

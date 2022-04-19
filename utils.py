@@ -445,3 +445,10 @@ def singleify(data):
             else:
                 single[k] = data[k]
     return single
+
+
+def smooth_arr(arr, kernel_size=5):
+    kernel = np.ones(kernel_size) / kernel_size
+    arr_convolved = np.convolve(arr, kernel, mode="same")
+    assert arr_convolved.shape == arr.shape
+    return arr_convolved

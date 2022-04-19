@@ -7,6 +7,7 @@ from utils import (
     convert_to_df,
     split_along_subgroup,
     get_good_idxs,
+    smooth_arr,
     fill_gaps,
     compute_YP,
 )
@@ -84,7 +85,7 @@ if __name__ == "__main__":
     plot_versus(
         data_x=eye_valid_t,
         name_x="Time",
-        data_y=pupil_mm_L,
+        data_y=smooth_arr(pupil_mm_L, 100),
         name_y="Left pupil diameter",
         units_y="mm",
         units_x="s",
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     plot_versus(
         data_x=eye_valid_t,
         name_x="Time",
-        data_y=pupil_mm_R,
+        data_y=smooth_arr(pupil_mm_R),
         name_y="Right pupil diameter",
         units_y="mm",
         units_x="s",
