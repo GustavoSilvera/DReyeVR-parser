@@ -184,6 +184,11 @@ class DrivingModel(torch.nn.Module):
             nn.Linear(self.in_dim, 64),
             nn.Linear(64, 128),
             nn.Linear(128, 128),
+            nn.Linear(128, 256),
+            nn.Linear(256, 256),
+            nn.Linear(256, 256),
+            nn.Linear(256, 256),
+            nn.Linear(256, 128),
             nn.Linear(128, 64),
             nn.Linear(64, self.out_dim),
         )
