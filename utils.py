@@ -401,8 +401,10 @@ def filter_to_idxs(
             eye["COMBINEDGazeValid"]
             & eye["LEFTGazeValid"]
             & eye["LEFTEyeOpennessValid"]
+            & (eye["LEFTEyeOpenness"] > 0)
             & eye["LEFTPupilPositionValid"]
             & eye["RIGHTGazeValid"]
+            & (eye["RIGHTEyeOpenness"] > 0)
             & eye["RIGHTEyeOpennessValid"]
             & eye["RIGHTPupilPositionValid"]
         )

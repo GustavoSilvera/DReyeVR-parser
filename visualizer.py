@@ -148,9 +148,12 @@ def plot_diff(
 
 
 def save_figure_to_file(
-    fig: plt.Figure, filename: str, dir_path: Optional[str] = results_dir
+    fig: plt.Figure, filename: str, dir_path: Optional[str] = None
 ) -> None:
     # make file and save to disk
+    if dir_path is None:
+        global results_dir
+        dir_path = results_dir
     if not os.path.exists(os.path.join(os.getcwd(), dir_path)):
         os.mkdir(dir_path)
     filename: str = filename.lower().replace(
@@ -158,7 +161,7 @@ def save_figure_to_file(
     )  # all lowercase, use _ instead of spaces
     fig.savefig(os.path.join(dir_path, filename))
     plt.close(fig)
-    print(f"output figure to {filename}")
+    print(f"output figure to {dir_path}/{filename}")
 
 
 def plot_vector_vs_time(

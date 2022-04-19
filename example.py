@@ -15,12 +15,9 @@ from visualizer import (
     plot_histogram2d,
     plot_vector_vs_time,
     plot_3Dt,
-    set_results_dir,
 )
 import numpy as np
 import argparse
-
-set_results_dir("ml_results")
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="DReyeVR recording parser")
@@ -177,6 +174,27 @@ if __name__ == "__main__":
         bins=100,
     )
 
+    """plot eye vars"""
+    plot_versus(
+        data_x=eye_valid_t,
+        name_x="Time",
+        data_y=eye["LEFTEyeOpenness"],
+        name_y="Left eye openness",
+        units_y="mm",
+        units_x="s",
+        lines=True,
+    )
+
+    plot_versus(
+        data_x=eye_valid_t,
+        name_x="Time",
+        data_y=eye["RIGHTEyeOpenness"],
+        name_y="Right eye openness",
+        units_y="mm",
+        units_x="s",
+        lines=True,
+    )
+
     """compute intrinsic factors"""
     delta_ts = np.diff(t)  # t is in seconds
     n: int = len(delta_ts)
@@ -258,3 +276,12 @@ if __name__ == "__main__":
         units_x="s",
         lines=True,
     )
+
+    """plot relative camera things"""
+    plot_vector_vs_time(data["EgoVariables"]["CameraLoc"], t, "CameraLoc")
+    plot_vector_vs_time(data["EgoVariables"]["CameraRot"], t, "CameraRot")
+
+    """plot gaze things"""
+    plot_vector_vs_time(data["EyeTracker"]["COMBINEDGazeDir"], t, "CombinedGaze")
+    plot_vector_vs_time(data["EyeTracker"]["LEFTGazeDir"], t, "LeftGaze")
+    plot_vector_vs_time(data["EyeTracker"]["RIGHTGazeDir"], t, "RightGaze")

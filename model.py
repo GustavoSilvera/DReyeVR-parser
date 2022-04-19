@@ -16,7 +16,13 @@ from utils import (
     filter_to_idxs,
     trim_data,
 )
-from visualizer import plot_versus, plot_vector_vs_time
+from visualizer import plot_versus, plot_vector_vs_time, set_results_dir
+
+set_results_dir("results.model")
+
+seed = 99
+np.random.seed(seed)
+torch.manual_seed(seed)
 
 """Get data"""
 argparser = argparse.ArgumentParser(description="DReyeVR recording parser")
@@ -81,35 +87,33 @@ X = np.array(
         data["EgoVariables"]["Velocity"][:, 0],
         data["EgoVariables"]["Velocity"][:, 1],
         # data["EgoVariables"]["Velocity"][:, 2], # causes nan's
-        data["EyeTracker"]["COMBINEDGazeDir"][:, 0],
+        # data["EyeTracker"]["COMBINEDGazeDir"][:, 0], # highly discrete, should be ~1
         data["EyeTracker"]["COMBINEDGazeDir"][:, 1],
         data["EyeTracker"]["COMBINEDGazeDir"][:, 2],
-        data["EyeTracker"]["LEFTGazeDir"][:, 0],
+        # data["EyeTracker"]["LEFTGazeDir"][:, 0], # highly discrete, should be ~1
         data["EyeTracker"]["LEFTGazeDir"][:, 1],
         data["EyeTracker"]["LEFTGazeDir"][:, 2],
-        data["EyeTracker"]["RIGHTGazeDir"][:, 0],
+        # data["EyeTracker"]["RIGHTGazeDir"][:, 0], # highly discrete, should be ~1
         data["EyeTracker"]["RIGHTGazeDir"][:, 1],
         data["EyeTracker"]["RIGHTGazeDir"][:, 2],
         data["EyeTracker"]["LEFTPupilDiameter"],
         data["EyeTracker"]["LEFTPupilPosition"][:, 0],
         data["EyeTracker"]["LEFTPupilPosition"][:, 1],
-        data["EyeTracker"]["LEFTEyeOpenness"],
         data["EyeTracker"]["RIGHTPupilDiameter"],
         data["EyeTracker"]["RIGHTPupilPosition"][:, 0],
         data["EyeTracker"]["RIGHTPupilPosition"][:, 1],
-        data["EyeTracker"]["RIGHTEyeOpenness"],
         data["EgoVariables"]["VehicleLoc"][:, 0],
         data["EgoVariables"]["VehicleLoc"][:, 1],
-        # data["EgoVariables"]["VehicleLoc"][:, 2],
-        # data["EgoVariables"]["VehicleRot"][:, 0],
-        # data["EgoVariables"]["VehicleRot"][:, 1],
-        # data["EgoVariables"]["VehicleRot"][:, 2],
+        # data["EgoVariables"]["VehicleLoc"][:, 2], # z position is mostly flat
+        # data["EgoVariables"]["VehicleRot"][:, 0], # rotators are just weird (non wrapped)
+        # data["EgoVariables"]["VehicleRot"][:, 1], # rotators are just weird (non wrapped)
+        # data["EgoVariables"]["VehicleRot"][:, 2], # rotators are just weird (non wrapped)
         data["EgoVariables"]["CameraLoc"][:, 0],
         data["EgoVariables"]["CameraLoc"][:, 1],
-        # data["EgoVariables"]["CameraLoc"][:, 2],
-        # data["EgoVariables"]["CameraRot"][:, 0],
-        # data["EgoVariables"]["CameraRot"][:, 1],
-        # data["EgoVariables"]["CameraRot"][:, 2],
+        # data["EgoVariables"]["CameraLoc"][:, 2], # z position is mostly flat
+        data["EgoVariables"]["CameraRot"][:, 0],  # relative rotators are ok
+        data["EgoVariables"]["CameraRot"][:, 1],  # relative rotators are ok
+        data["EgoVariables"]["CameraRot"][:, 2],  # relative rotators are ok
         data["UserInputs"]["Throttle"],
         # data["UserInputs"]["Steering"],
         data["UserInputs"]["Brake"],
@@ -121,18 +125,6 @@ p = 0.2
 m = int(len(X) * (1 - p))  # percentage for training
 train_split = {"X": X[:m], "Y": Y[:m]}
 test_split = {"X": X[m:], "Y": Y[m:]}
-
-# # Train SVM
-# svm = svm.SVR(kernel="linear")  # regression, not classification (SVC)
-# svm.fit(train_split["X"], train_split["Y"])
-
-# pickle.dump(svm, open("model.svm", "wb"))
-# # Predict on test set and compute metrics
-# # svm_pred = svm.predict(test_split["X"])
-# # accuracy = np.sum(svm_pred == test_split["Y"]) / len(test_split["Y"])
-# # print("Num samples: {:06d}   ---   SVM Accuracy: {:.02f}".format(n_samples, accuracy))
-
-# # Compute confusion matrix
 
 
 class DrivingModel(torch.nn.Module):
