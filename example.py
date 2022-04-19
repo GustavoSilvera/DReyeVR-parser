@@ -10,9 +10,17 @@ from utils import (
     fill_gaps,
     compute_YP,
 )
-from visualizer import plot_versus, plot_histogram2d, plot_vector_vs_time, plot_3Dt
+from visualizer import (
+    plot_versus,
+    plot_histogram2d,
+    plot_vector_vs_time,
+    plot_3Dt,
+    set_results_dir,
+)
 import numpy as np
 import argparse
+
+set_results_dir("ml_results")
 
 if __name__ == "__main__":
     argparser = argparse.ArgumentParser(description="DReyeVR recording parser")
@@ -200,3 +208,53 @@ if __name__ == "__main__":
         lines=True,
     )
     # jerk, snap, crackle, pop?
+
+    # TODO: keep track of vehicles in the scene and track their positions (interpolated) over time
+
+    """steering over time"""
+    plot_versus(
+        data_x=t,
+        name_x="Time",
+        data_y=data["UserInputs"]["Steering"],
+        name_y="Steering",
+        units_y="Deg",
+        units_x="s",
+        lines=True,
+    )
+
+    """velocity over time"""
+
+    plot_vector_vs_time(ego_velocity[50:], t[1 + 50 :], "EgoVel XYZ")
+    plot_vector_vs_time(ego_accel[50:], t[2 + 50 :], "EgoAccel XYZ")
+    plot_vector_vs_time(data["EgoVariables"]["VehicleRot"], t, "EgoRot XYZ")
+
+    """Stored velocity over time"""
+    plot_versus(
+        data_x=t,
+        name_x="Time",
+        data_y=data["EgoVariables"]["VehicleVel"],
+        name_y="Velocity",
+        units_y="m/s",
+        units_x="s",
+        lines=True,
+    )
+
+    plot_versus(
+        data_x=t,
+        name_x="Time",
+        data_y=data["UserInputs"]["Throttle"],
+        name_y="Throttle",
+        units_y="",
+        units_x="s",
+        lines=True,
+    )
+
+    plot_versus(
+        data_x=t,
+        name_x="Time",
+        data_y=data["UserInputs"]["Brake"],
+        name_y="Brake",
+        units_y="",
+        units_x="s",
+        lines=True,
+    )

@@ -10,6 +10,11 @@ mpl.use("Agg")
 results_dir: str = "results"
 
 
+def set_results_dir(new_dir: str) -> None:
+    global results_dir
+    results_dir = new_dir
+
+
 def plot_versus(
     data_x: np.ndarray,
     data_y: np.ndarray,
