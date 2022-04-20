@@ -10,7 +10,7 @@ import argparse
 
 
 """DReyeVR parser imports"""
-from model_utils import get_model_data, visualize_importance
+from model_utils import get_model_data, get_all_data, visualize_importance, normalize_batch
 from models import SteeringModel
 from visualizer import (
     plot_versus,
@@ -58,7 +58,9 @@ if filename is None:
     print("Need to pass in the recording file")
     exit(1)
 
-data = get_model_data(filename)
+# data = get_model_data(filename)
+data = get_all_data(filename)
+data = normalize_batch(data)
 
 """get data!!!"""
 t = data["TimestampCarla_data"]
@@ -67,6 +69,8 @@ t = data["TimestampCarla_data"]
 Y = data["UserInputs_Steering"]
 
 feature_names = [
+    "EgoVariables_VehicleLoc_0",
+    "EgoVariables_VehicleLoc_1",
     "EgoVariables_VehicleVel",
     "EgoVariables_Velocity_0",
     "EgoVariables_Velocity_1",
@@ -85,7 +89,6 @@ feature_names = [
     "EgoVariables_CameraLoc_1",
     "EgoVariables_CameraRot_0",
     "EgoVariables_CameraRot_1",
-    "EgoVariables_CameraRot_2",
     "UserInputs_Throttle",  # other driving inputs
     "UserInputs_Brake",  # other driving inputs
 ]
@@ -104,7 +107,7 @@ test_split = {"X": X[m:], "Y": Y[m:]}
 model = SteeringModel(len(feature_names))
 if ckpt is not None:
     assert os.path.exists(ckpt)
-    model.load_state_dict(ckpt["steering_net"])
+    model.load_state_dict(torch.load(ckpt))
 
 
 critereon = torch.nn.MSELoss()
@@ -113,6 +116,7 @@ optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
 scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
 # optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.01)
 
+print("Starting model training...")
 acc_thresh = np.mean(np.abs(test_split["Y"]))
 for epoch in range(num_epochs):
     start_t = time.time()
@@ -147,11 +151,24 @@ for epoch in range(num_epochs):
         f"Epoch {epoch} \t Train: {train_loss:4.3f} \t Test: {test_loss:4.3f}"
         f"\t Acc: {acc:2.1f}"
     )
+    full_predictions = np.array(
+        [np.squeeze(model.forward(torch.Tensor(X)).detach().numpy()), Y]
+    ).T
+    plot_vector_vs_time(
+        xyz=full_predictions,
+        t=t,
+        title=f"predicted vs actual.{epoch}",
+        ax_titles=["pred", "actual"],
+        silent=True,
+    )
+
 
 if num_epochs > 0:
     filename: str = os.path.join(results_dir, "model.pt")
-    torch.save({"steering_net", model.state_dict()}, filename)
+    torch.save(model.state_dict(), filename)
 
+# use for inference now
+model.eval()
 
 y_pred = model.forward(torch.Tensor(test_split["X"])).detach().numpy()
 
@@ -173,15 +190,10 @@ plot_versus(
 
 """test on training data"""
 y_pred = np.squeeze(model.forward(torch.Tensor(X)).detach().numpy())
-# plot_versus(
-#     data_x=t,
-#     data_y=y_pred,
-#     name_x="Frames",
-#     name_y="AllPredY",
-#     lines=True,
-# )
 
-pred_actual = np.array([y_pred, Y]).T
+pred_actual = np.array(
+    [np.squeeze(model.forward(torch.Tensor(X)).detach().numpy()), Y]
+).T
 plot_vector_vs_time(
     xyz=pred_actual, t=t, title="predicted vs actual", ax_titles=["pred", "actual"]
 )

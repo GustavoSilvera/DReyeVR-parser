@@ -149,7 +149,10 @@ def plot_diff(
 
 
 def save_figure_to_file(
-    fig: plt.Figure, filename: str, dir_path: Optional[str] = None
+    fig: plt.Figure,
+    filename: str,
+    dir_path: Optional[str] = None,
+    silent: Optional[bool] = False,
 ) -> None:
     # make file and save to disk
     if dir_path is None:
@@ -162,7 +165,8 @@ def save_figure_to_file(
     )  # all lowercase, use _ instead of spaces
     fig.savefig(os.path.join(dir_path, filename))
     plt.close(fig)
-    print(f"output figure to {dir_path}/{filename}")
+    if not silent:
+        print(f"output figure to {dir_path}/{filename}")
 
 
 def plot_vector_vs_time(
@@ -170,6 +174,7 @@ def plot_vector_vs_time(
     t: np.ndarray,
     title: str,
     ax_titles: Optional[Tuple[str]] = ("X", "Y", "Z"),
+    silent: Optional[bool] = False,
 ) -> None:
     n, d = xyz.shape
     assert xyz.shape == (n, d)
@@ -183,7 +188,7 @@ def plot_vector_vs_time(
         axs[dim].set(ylabel=ax_titles[dim] if dim < len(ax_titles) else "")
         axs[dim].plot(t, data_dim)
     filename: str = f"{title}.png"
-    save_figure_to_file(fig, filename)
+    save_figure_to_file(fig, filename, silent=silent)
 
 
 def plot_3Dt(

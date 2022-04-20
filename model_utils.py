@@ -23,6 +23,27 @@ from visualizer import (
 data_dir = "data"
 
 
+def get_all_data(name: str):
+    all_data = []
+    assert os.path.exists(data_dir)
+    _, _, files = list(os.walk(data_dir))[0]
+    for f in sorted(files):
+        if name in f:
+            data = try_load_data(f.replace(".data", ""))
+            assert data is not None
+            all_data.append(data)
+    full_data = {}
+    for d in all_data:
+        for k in d.keys():
+            if k not in full_data:
+                full_data[k] = np.array([])
+            data = d[k]
+            if k == "TimestampCarla_data" and len(full_data[k]) > 0:
+                data += full_data[k][-1]  # ensure time is monotonically incr
+            full_data[k] = np.concatenate((full_data[k], data))
+    return full_data
+
+
 def get_model_data(filename: str) -> Dict[str, Any]:
     """try to load cached data from previous runs"""
     data = try_load_data(filename)
@@ -88,41 +109,42 @@ def get_model_data(filename: str) -> Dict[str, Any]:
     data = singleify(data)  # so individual axes are accessible via _ notation
 
     # apply data smoothing
+    smooth_amnt = 200
     data["EyeTracker_COMBINEDGazeDir_1_s"] = smooth_arr(
-        data["EyeTracker_COMBINEDGazeDir_1"], 20
+        data["EyeTracker_COMBINEDGazeDir_1"], smooth_amnt
     )
     data["EyeTracker_COMBINEDGazeDir_2_s"] = smooth_arr(
-        data["EyeTracker_COMBINEDGazeDir_2"], 20
+        data["EyeTracker_COMBINEDGazeDir_2"], smooth_amnt
     )
     data["EyeTracker_LEFTGazeDir_1_s"] = smooth_arr(
-        data["EyeTracker_LEFTGazeDir_1"], 20
+        data["EyeTracker_LEFTGazeDir_1"], smooth_amnt
     )
     data["EyeTracker_LEFTGazeDir_2_s"] = smooth_arr(
-        data["EyeTracker_LEFTGazeDir_2"], 20
+        data["EyeTracker_LEFTGazeDir_2"], smooth_amnt
     )
     data["EyeTracker_RIGHTGazeDir_1_s"] = smooth_arr(
-        data["EyeTracker_RIGHTGazeDir_1"], 20
+        data["EyeTracker_RIGHTGazeDir_1"], smooth_amnt
     )
     data["EyeTracker_RIGHTGazeDir_2_s"] = smooth_arr(
-        data["EyeTracker_RIGHTGazeDir_2"], 20
+        data["EyeTracker_RIGHTGazeDir_2"], smooth_amnt
     )
     data["EyeTracker_LEFTPupilDiameter_s"] = smooth_arr(
-        data["EyeTracker_LEFTPupilDiameter"], 20
+        data["EyeTracker_LEFTPupilDiameter"], smooth_amnt
     )
     data["EyeTracker_LEFTPupilPosition_0_s"] = smooth_arr(
-        data["EyeTracker_LEFTPupilPosition_0"], 20
+        data["EyeTracker_LEFTPupilPosition_0"], smooth_amnt
     )
     data["EyeTracker_LEFTPupilPosition_1_s"] = smooth_arr(
-        data["EyeTracker_LEFTPupilPosition_1"], 20
+        data["EyeTracker_LEFTPupilPosition_1"], smooth_amnt
     )
     data["EyeTracker_RIGHTPupilDiameter_s"] = smooth_arr(
-        data["EyeTracker_RIGHTPupilDiameter"], 20
+        data["EyeTracker_RIGHTPupilDiameter"], smooth_amnt
     )
     data["EyeTracker_RIGHTPupilPosition_0_s"] = smooth_arr(
-        data["EyeTracker_RIGHTPupilPosition_0"], 20
+        data["EyeTracker_RIGHTPupilPosition_0"], smooth_amnt
     )
     data["EyeTracker_RIGHTPupilPosition_1_s"] = smooth_arr(
-        data["EyeTracker_RIGHTPupilPosition_1"], 20
+        data["EyeTracker_RIGHTPupilPosition_1"], smooth_amnt
     )
     cache_data(data, filename)
     return data
@@ -175,3 +197,16 @@ def cache_data(data, filename):
     with open(filename, "wb") as filehandler:
         pickle.dump(data, filehandler)
     print(f"cached data to {filename}")
+
+
+def normalize_batch(data):
+    for k in data.keys():
+        try:
+            x = data[k]
+            mu = np.mean(x)
+            std = np.std(x)
+            if std != 0:
+                data[k] = (x - mu) / std
+        except Exception as e:
+            pass
+    return data
