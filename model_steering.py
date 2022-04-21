@@ -10,7 +10,12 @@ import argparse
 
 
 """DReyeVR parser imports"""
-from model_utils import get_model_data, get_all_data, visualize_importance, normalize_batch
+from model_utils import (
+    get_model_data,
+    get_all_data,
+    visualize_importance,
+    normalize_batch,
+)
 from models import SteeringModel
 from visualizer import (
     plot_versus,
@@ -118,6 +123,8 @@ scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
 
 print("Starting model training...")
 acc_thresh = np.mean(np.abs(test_split["Y"]))
+accs = []
+losses = []
 for epoch in range(num_epochs):
     start_t = time.time()
     """train model"""
@@ -146,6 +153,8 @@ for epoch in range(num_epochs):
             loss_crit = critereon(outputs, desired)
             test_loss += loss_crit.item()
         acc = 100 * correct / len(test_split["Y"])
+        accs.append(acc)
+        losses.append(test_loss)
     scheduler.step(test_loss)
     print(
         f"Epoch {epoch} \t Train: {train_loss:4.3f} \t Test: {test_loss:4.3f}"
@@ -185,6 +194,26 @@ plot_versus(
     data_y=y_pred,
     name_x="Frames",
     name_y="PredY",
+    lines=True,
+)
+
+# plot accuracy
+assert len(accs) == num_epochs
+plot_versus(
+    data_x=np.arange(num_epochs),
+    data_y=accs,
+    name_x="Epochs",
+    name_y="Accuracy",
+    lines=True,
+)
+
+# plot losses
+assert len(losses) == num_epochs
+plot_versus(
+    data_x=np.arange(num_epochs),
+    data_y=losses,
+    name_x="Epochs",
+    name_y="Loss",
     lines=True,
 )
 
