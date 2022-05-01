@@ -147,6 +147,14 @@ if __name__ == "__main__":
     omit_front: int = 50
     plot_vector_vs_time(pos3D[omit_front:], t[omit_front:], "EgoPos XYZ (50:)")
 
+    rot3D = data["EgoVariables"]["VehicleRot"][omit_front:]
+    plot_vector_vs_time(
+        rot3D,
+        t[omit_front:],
+        "EgoRot PYR (50:)",
+        ax_titles=["P", "Y", "R"],
+    )
+
     plot_3Dt(
         xyz=pos3D[omit_front:],
         t=t[omit_front:],
@@ -227,6 +235,21 @@ if __name__ == "__main__":
         lines=True,
     )
     # jerk, snap, crackle, pop?
+
+    angular_disp = np.diff(rot3D, axis=0)
+    # fix rollovers for +360
+    angular_disp[np.squeeze(np.where(np.abs(np.diff(rot3D[:, 1], axis=0)) > 359))] = 0
+    # pos_roll_idxs = np.squeeze(np.where(np.diff(rot3D[:, 1], axis=0) > 359))
+    # angular_disp[pos_roll_idxs][:, 1] = -1 * (360 - angular_disp[pos_roll_idxs][:, 1])
+    # neg_roll_idxs = np.squeeze(np.where(np.diff(rot3D[:, 1], axis=0) < -359))
+    # angular_disp[neg_roll_idxs][:, 1] = 360 + angular_disp[neg_roll_idxs][:, 1]
+    angular_vel = (angular_disp.T / delta_ts[omit_front:]).T
+    plot_vector_vs_time(
+        angular_vel,
+        t[omit_front + 1 :],
+        "Delta EgoRot PYR (50:)",
+        ax_titles=["P", "Y", "R"],
+    )
 
     # TODO: keep track of vehicles in the scene and track their positions (interpolated) over time
 

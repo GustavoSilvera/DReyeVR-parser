@@ -1,34 +1,26 @@
+import os
 import time
 import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 import torch
-from sklearn import svm
-from torch import nn
-from torch.utils.data import DataLoader, TensorDataset
-from captum.attr import IntegratedGradients
 import argparse
 
 
 """DReyeVR parser imports"""
-from parser import parse_file
-from utils import (
-    check_for_periph_data,
-    fill_gaps,
-    filter_to_idxs,
-    singleify,
-    smooth_arr,
-    trim_data,
-    flatten_dict,
+from model_utils import (
+    get_model_data,
+    get_all_data,
+    visualize_importance,
+    normalize_batch,
 )
+from models import DrivingModel
 from visualizer import (
     plot_versus,
     plot_vector_vs_time,
-    save_figure_to_file,
     set_results_dir,
 )
 
-set_results_dir("results.model")
+results_dir = "results.model"
+set_results_dir(results_dir)
 
 seed = 99
 np.random.seed(seed)
@@ -44,104 +36,51 @@ argparser.add_argument(
     type=str,
     help="path of the (human readable) recording file",
 )
+argparser.add_argument(
+    "--load",
+    metavar="L",
+    default=None,
+    type=str,
+    help="path to a saved model state dict checkpoint",
+)
+argparser.add_argument(
+    "--epochs",
+    metavar="E",
+    default=0,
+    type=int,
+    help="Number of epochs to train this model",
+)
 args = argparser.parse_args()
 filename: str = args.file
+ckpt: str = args.load
+num_epochs = args.epochs
+
 if filename is None:
     print("Need to pass in the recording file")
     exit(1)
 
-data = parse_file(filename)
-# check for periph data
-PeriphData = check_for_periph_data(data)
-if PeriphData is not None:
-    data["PeriphData"] = PeriphData
-
-"""sanitize data"""
-if "CustomActor" in data:
-    data.pop("CustomActor")  # not using this rn
-data = filter_to_idxs(data, mode="all")
-data["EyeTracker"]["LEFTPupilDiameter"] = fill_gaps(
-    np.squeeze(data["EyeTracker"]["LEFTPupilDiameter"]), lambda x: x < 1, mode="mean"
-)
-data["EyeTracker"]["RIGHTPupilDiameter"] = fill_gaps(
-    np.squeeze(data["EyeTracker"]["RIGHTPupilDiameter"]), lambda x: x < 1, mode="mean"
-)
-# remove all "validity" boolean vectors
-for key in list(data["EyeTracker"].keys()):
-    if "Valid" in key:
-        data["EyeTracker"].pop(key)
-
-# compute ego position derivatives
-t = data["TimestampCarla"]["data"] / 1000  # ms to s
-delta_ts = np.diff(t)  # t is in seconds
-n: int = len(delta_ts)
-assert delta_ts.min() > 0  # should always be monotonically increasing!
-ego_displacement = np.diff(data["EgoVariables"]["VehicleLoc"], axis=0)
-ego_velocity = (ego_displacement.T / delta_ts).T
-ego_velocity = np.concatenate((np.zeros((1, 3)), ego_velocity))  # include 0 @ t=0
-ego_accel = (np.diff(ego_velocity, axis=0).T / delta_ts).T
-ego_accel = np.concatenate((np.zeros((1, 3)), ego_accel))  # include 0 @ t=0
-data["EgoVariables"]["Velocity"] = ego_velocity
-data["EgoVariables"]["Accel"] = ego_accel
-
-# trim data bounds
-data = trim_data(data, (50, 100))
-data = flatten_dict(data)
-data = singleify(data)  # so individual axes are accessible via _ notation
-
-# apply data smoothing
-data["EyeTracker_COMBINEDGazeDir_1_s"] = smooth_arr(
-    data["EyeTracker_COMBINEDGazeDir_1"], 20
-)
-data["EyeTracker_COMBINEDGazeDir_2_s"] = smooth_arr(
-    data["EyeTracker_COMBINEDGazeDir_2"], 20
-)
-data["EyeTracker_LEFTGazeDir_1_s"] = smooth_arr(data["EyeTracker_LEFTGazeDir_1"], 20)
-data["EyeTracker_LEFTGazeDir_2_s"] = smooth_arr(data["EyeTracker_LEFTGazeDir_2"], 20)
-data["EyeTracker_RIGHTGazeDir_1_s"] = smooth_arr(data["EyeTracker_RIGHTGazeDir_1"], 20)
-data["EyeTracker_RIGHTGazeDir_2_s"] = smooth_arr(data["EyeTracker_RIGHTGazeDir_2"], 20)
-data["EyeTracker_LEFTPupilDiameter_s"] = smooth_arr(
-    data["EyeTracker_LEFTPupilDiameter"], 20
-)
-data["EyeTracker_LEFTPupilPosition_0_s"] = smooth_arr(
-    data["EyeTracker_LEFTPupilPosition_0"], 20
-)
-data["EyeTracker_LEFTPupilPosition_1_s"] = smooth_arr(
-    data["EyeTracker_LEFTPupilPosition_1"], 20
-)
-data["EyeTracker_RIGHTPupilDiameter_s"] = smooth_arr(
-    data["EyeTracker_RIGHTPupilDiameter"], 20
-)
-data["EyeTracker_RIGHTPupilPosition_0_s"] = smooth_arr(
-    data["EyeTracker_RIGHTPupilPosition_0"], 20
-)
-data["EyeTracker_RIGHTPupilPosition_1_s"] = smooth_arr(
-    data["EyeTracker_RIGHTPupilPosition_1"], 20
-)
-
+# data = get_model_data(filename)
+data = get_all_data(filename)
+data = normalize_batch(data)
 
 """get data!!!"""
-t = data["TimestampCarla_data"] / 1000  # ms to s
+t = data["TimestampCarla_data"]
 
-Y = data["UserInputs_Steering"]
-
-# Split sampled data into training and test
+"""OUTPUT VARIABLES"""
+Y = {}
+Y["steering"] = data["UserInputs_Steering"]
+Y["throttle"] = data["UserInputs_Throttle"]
+Y["brake"] = data["UserInputs_Brake"]
 
 feature_names = [
+    "EgoVariables_VehicleLoc_0",
+    "EgoVariables_VehicleLoc_1",
     "EgoVariables_VehicleVel",
-    "EgoVariables_Velocity_0",  # dependent on steering
-    "EgoVariables_Velocity_1",  # dependent on steering
-    # "EgoVariables_Velocity_2",  # causes nan's
-    # "EgoVariables_Accel_0", # dependent on steering
-    # "EgoVariables_Accel_1", # dependent on steering
-    # "EgoVariables_Accel_2",  # uninteresting
-    # "EyeTracker_COMBINEDGazeDir_0",  # not interesting, should be ~1
-    # "EyeTracker_COMBINEDGazeDir_1_s", # correlated with LEFT/RIGHT
-    # "EyeTracker_COMBINEDGazeDir_2_s", # correlated with LEFT/RIGHT
-    # "EyeTracker_LEFTGazeDir_0",  # not interesting, should be ~1
+    "EgoVariables_Velocity_0",
+    "EgoVariables_Velocity_1",
+    "EgoVariables_AngularVelocity_1",  # yaw velocity
     "EyeTracker_LEFTGazeDir_1_s",
     "EyeTracker_LEFTGazeDir_2_s",
-    # "EyeTracker_RIGHTGazeDir_0",  # not interesting, should be ~1
     "EyeTracker_RIGHTGazeDir_1_s",
     "EyeTracker_RIGHTGazeDir_2_s",
     "EyeTracker_LEFTPupilDiameter_s",
@@ -150,161 +89,71 @@ feature_names = [
     "EyeTracker_RIGHTPupilDiameter_s",
     "EyeTracker_RIGHTPupilPosition_0_s",
     "EyeTracker_RIGHTPupilPosition_1_s",
-    # "EgoVariables_VehicleLoc_0",  # dependent on steering
-    # "EgoVariables_VehicleLoc_1",  # dependent on steering
-    # "EgoVariables_VehicleLoc_2", # z position mostly flat
-    # "EgoVariables_VehicleRot_0", # unwrapped absolute rotators
-    # "EgoVariables_VehicleRot_1", # unwrapped absolute rotators
-    # "EgoVariables_VehicleRot_2", # unwrapped absolute rotators
     "EgoVariables_CameraLoc_0",
     "EgoVariables_CameraLoc_1",
-    # "EgoVariables_CameraLoc_2", # mostly flat
-    "EgoVariables_CameraRot_0",  # relative rotators are ok
-    "EgoVariables_CameraRot_1",  # relative rotators are ok
-    "EgoVariables_CameraRot_2",  # relative rotators are ok
-    "UserInputs_Throttle",
-    "UserInputs_Brake",
+    "EgoVariables_CameraRot_0",
+    "EgoVariables_CameraRot_1",
 ]
 
-X = np.array([data[feature_key] for feature_key in feature_names]).T
+feature_names_steering = feature_names + [
+    "UserInputs_Throttle",  # other driving inputs
+    "UserInputs_Brake",  # other driving inputs
+]
 
-# make test/train split
-p = 0.2
-m = int(len(X) * (1 - p))  # percentage for training
-train_split = {"X": X[:m], "Y": Y[:m]}
-test_split = {"X": X[m:], "Y": Y[m:]}
+feature_names_throttle = feature_names + [
+    "UserInputs_Steering",  # other driving inputs
+    "UserInputs_Brake",  # other driving inputs
+]
 
-
-class DrivingModel(torch.nn.Module):
-    def __init__(self, in_dim: int):
-        super().__init__()
-        self.in_dim = in_dim
-        self.out_dim = 1  # outputting only a single scalar
-        self.network = torch.nn.Sequential(
-            nn.Linear(self.in_dim, 64),
-            nn.Linear(64, 128),
-            nn.Linear(128, 128),
-            nn.Linear(128, 256),
-            nn.Linear(256, 256),
-            nn.Linear(256, 256),
-            nn.Linear(256, 256),
-            nn.Linear(256, 128),
-            nn.Linear(128, 64),
-            nn.Linear(64, self.out_dim),
-        )
-
-    def forward(self, x):
-        return self.network(x)
+feature_names_brake = feature_names + [
+    "UserInputs_Steering",  # other driving inputs
+    "UserInputs_Throttle",  # other driving inputs
+]
 
 
-model = DrivingModel(train_split["X"].shape[1])
+"""INPUT VARIABLE"""
+X = {}
+X["steering"] = np.array([data[k] for k in feature_names_steering]).T
+X["throttle"] = np.array([data[k] for k in feature_names_throttle]).T
+X["brake"] = np.array([data[k] for k in feature_names_brake]).T
 
-critereon = torch.nn.MSELoss()
-# critereon = torch.nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
-scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, "min")
+# Split sampled data into training and test
+p = 0.2  # last 20% of the data is for testing
+m = int(len(t) * (1 - p))  # percentage for training
+train_split = {
+    "X": {k: X[k][:m] for k in X.keys()},
+    "Y": {k: Y[k][:m] for k in Y.keys()},
+}
 
-# optimizer = torch.optim.SGD(model.parameters(), lr=0.01, momentum=0.01)
-
-nb_epochs = 25
-acc_thresh = np.mean(np.abs(test_split["Y"]))
-for epoch in range(nb_epochs):
-    start_t = time.time()
-    """train model"""
-    model.train()
-    train_loss = 0
-    for ix, x in enumerate(train_split["X"]):
-        optimizer.zero_grad()
-        data = torch.Tensor(x)
-        desired = torch.Tensor([train_split["Y"][ix]])
-        outputs = model.forward(data)
-        # predictions = torch.nn.functional.softmax(outputs, dim=1)
-        loss = critereon(outputs, desired)
-        train_loss += loss.item()
-        loss.backward()
-        optimizer.step()
-    """test model"""
-    test_loss = 0
-    correct = 0
-    with torch.no_grad():
-        model.eval()
-        for ix, x in enumerate(test_split["X"]):
-            data = torch.Tensor(x)
-            desired = torch.Tensor([test_split["Y"][ix]])
-            outputs = model.forward(data)
-            correct += 1 if torch.abs(outputs - desired) < acc_thresh else 0
-            loss_crit = critereon(outputs, desired)
-            test_loss += loss_crit.item()
-        acc = 100 * correct / len(test_split["Y"])
-    scheduler.step(test_loss)
-    print(
-        f"Epoch {epoch} \t Train: {train_loss:4.3f} \t Test: {test_loss:4.3f}"
-        f"\t Acc: {acc:2.1f}"
-    )
-
-# y_pred = np.array([model(torch.Tensor(X[i])).detach().numpy() for i in range(len(X))])
-y_pred = model.forward(torch.Tensor(test_split["X"])).detach().numpy()
+test_split = {
+    "X": {k: X[k][m:] for k in X.keys()},
+    "Y": {k: Y[k][m:] for k in Y.keys()},
+}
 
 
-plot_versus(
-    data_x=t[m:],
-    data_y=test_split["Y"],
-    name_x="Frames",
-    name_y="TestY",
-    lines=True,
+model = DrivingModel(
+    len(feature_names_steering), len(feature_names_throttle), len(feature_names_brake)
+)
+if ckpt is not None:
+    assert os.path.exists(ckpt)
+    model.load_state_dict(torch.load(ckpt))
+
+model.begin_training(train_split["X"], train_split["Y"], t[:m])
+
+if num_epochs > 0:
+    filename: str = os.path.join(results_dir, "model.pt")
+    torch.save(model.state_dict(), filename)
+
+# use for inference now
+model.eval()
+
+y_pred = model.forward(
+    test_split["X"]["steering"],
+    test_split["X"]["throttle"],
+    test_split["X"]["brake"],
 )
 
-plot_versus(
-    data_x=t[m:],
-    data_y=y_pred,
-    name_x="Frames",
-    name_y="PredY",
-    lines=True,
-)
-
-"""test on training data"""
-y_pred = np.squeeze(model.forward(torch.Tensor(X)).detach().numpy())
-# plot_versus(
-#     data_x=t,
-#     data_y=y_pred,
-#     name_x="Frames",
-#     name_y="AllPredY",
-#     lines=True,
-# )
-
-pred_actual = np.array([y_pred, Y]).T
-plot_vector_vs_time(
-    xyz=pred_actual, t=t, title="predicted vs actual", ax_titles=["pred", "actual"]
-)
-
-
-def visualize_importances(
-    feature_names,
-    title="Average Feature Importances",
-    axis_title="Features",
-):
-    print("Visualizing feature importances...")
-    # Helper method to print importances and visualize distribution
-    ig = IntegratedGradients(model)
-    test_input_tensor = torch.Tensor(test_split["X"])
-    test_input_tensor.requires_grad_()
-    attr, delta = ig.attribute(
-        test_input_tensor, target=0, return_convergence_delta=True
-    )
-    attr = attr.detach().numpy()
-    importances = np.mean(attr, axis=0) / np.abs(np.mean(attr))
-    for i in range(len(feature_names)):
-        print(f"{feature_names[i]} : {importances[i]:.3f}")
-    x_pos = np.arange(len(feature_names))
-
-    fig = plt.figure(figsize=(12, 8))
-    plt.grid(True)
-    plt.bar(x_pos, importances, align="center")
-    plt.xticks(x_pos, feature_names, wrap=True, rotation=80)
-    plt.xlabel(axis_title)
-    plt.title(title)
-    save_figure_to_file(fig, "feature_importance.png")
-
-
-feature_names_small = [f[f.find("_") + 1 :] for f in feature_names]
-visualize_importances(feature_names_small)
+# convert back to CPU numpy
+steering_prediction = y_pred[0].detach().numpy()
+throttle_prediction = y_pred[1].detach().numpy()
+brake_prediction = y_pred[2].detach().numpy()
