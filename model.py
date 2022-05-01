@@ -144,6 +144,7 @@ if num_epochs > 0:
 
 model.begin_evaluation(test_split["X"], test_split["Y"], t[m:])
 
+# TODO: compute overall model 
 y_pred = model.forward(
     test_split["X"]["steering"],
     test_split["X"]["throttle"],
