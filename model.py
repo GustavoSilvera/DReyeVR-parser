@@ -95,17 +95,17 @@ feature_names = [
     "EgoVariables_CameraRot_1",
 ]
 
-feature_names_steering = feature_names + [
+feature_name_steering = feature_names + [
     "UserInputs_Throttle",  # other driving inputs
     "UserInputs_Brake",  # other driving inputs
 ]
 
-feature_names_throttle = feature_names + [
+feature_name_throttle = feature_names + [
     "UserInputs_Steering",  # other driving inputs
     "UserInputs_Brake",  # other driving inputs
 ]
 
-feature_names_brake = feature_names + [
+feature_name_brake = feature_names + [
     "UserInputs_Steering",  # other driving inputs
     "UserInputs_Throttle",  # other driving inputs
 ]
@@ -113,9 +113,9 @@ feature_names_brake = feature_names + [
 
 """INPUT VARIABLE"""
 X = {}
-X["steering"] = np.array([data[k] for k in feature_names_steering]).T
-X["throttle"] = np.array([data[k] for k in feature_names_throttle]).T
-X["brake"] = np.array([data[k] for k in feature_names_brake]).T
+X["steering"] = np.array([data[k] for k in feature_name_steering]).T
+X["throttle"] = np.array([data[k] for k in feature_name_throttle]).T
+X["brake"] = np.array([data[k] for k in feature_name_brake]).T
 
 # Split sampled data into training and test
 p = 0.2  # last 20% of the data is for testing
@@ -131,9 +131,7 @@ test_split = {
 }
 
 
-model = DrivingModel(
-    len(feature_names_steering), len(feature_names_throttle), len(feature_names_brake)
-)
+model = DrivingModel(feature_name_steering, feature_name_throttle, feature_name_brake)
 if ckpt is not None:
     assert os.path.exists(ckpt)
     model.load_state_dict(torch.load(ckpt))
@@ -144,8 +142,7 @@ if num_epochs > 0:
     filename: str = os.path.join(results_dir, "model.pt")
     torch.save(model.state_dict(), filename)
 
-# use for inference now
-model.eval()
+model.begin_evaluation(test_split["X"], test_split["Y"], t[m:])
 
 y_pred = model.forward(
     test_split["X"]["steering"],

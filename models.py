@@ -1,16 +1,26 @@
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 import torch
 import numpy as np
 import time
 from visualizer import plot_vector_vs_time
+from model_utils import visualize_importance
+
+
+def print_line():
+    print(40 * "*")
 
 
 class DrivingModel(torch.nn.Module):
-    def __init__(self, in_dim_steering: int, in_dim_throttle: int, in_dim_brake: int):
+    def __init__(
+        self,
+        features_steering: List[str],
+        features_throttle: List[str],
+        features_brake: List[str],
+    ):
         super().__init__()
-        self.steering_model = ThrottleModel(in_dim_steering)
-        self.throttle_model = ThrottleModel(in_dim_throttle)
-        self.brake_model = ThrottleModel(in_dim_brake)
+        self.steering_model = ThrottleModel(features_steering)
+        self.throttle_model = ThrottleModel(features_throttle)
+        self.brake_model = ThrottleModel(features_brake)
 
     def forward(
         self, x_steering, x_throttle, x_brake
@@ -33,7 +43,7 @@ class DrivingModel(torch.nn.Module):
 
     def begin_training(
         self, X: Dict[str, np.ndarray], Y: Dict[str, np.ndarray], t: np.ndarray
-    ):
+    ) -> None:
         self.train()
         # TODO: parallelize this
         self.steering_model.train_model(
@@ -43,6 +53,14 @@ class DrivingModel(torch.nn.Module):
             X["throttle"], Y["throttle"], t, name="throttle"
         )
         self.brake_model.train_model(X["brake"], Y["brake"], t, name="brake")
+
+    def begin_evaluation(
+        self, X: Dict[str, np.ndarray], Y: Dict[str, np.ndarray], t: np.ndarray
+    ) -> None:
+        self.eval()
+        self.steering_model.test_model(X["steering"], Y["steering"], t)
+        self.throttle_model.test_model(X["throttle"], Y["throttle"], t)
+        self.brake_model.test_model(X["brake"], Y["brake"], t)
 
 
 class SymbolModel(torch.nn.Module):
@@ -64,7 +82,8 @@ class SymbolModel(torch.nn.Module):
         t: np.ndarray,
         name: Optional[str] = "model",
     ) -> None:
-        print(f"Starting {name} model training...")
+        print_line()
+        print(f"Starting {name} model training for {self.num_epochs} epochs...")
         acc_thresh = np.mean(np.abs(Y))
         accs = []
         losses = []
@@ -100,7 +119,7 @@ class SymbolModel(torch.nn.Module):
             self.scheduler.step(test_loss)
             print(
                 f"Epoch {epoch} \t Train: {train_loss:4.3f} \t Test: {test_loss:4.3f}"
-                f"\t Acc: {acc:2.1f}% @ {time.time() - start_t:.2f}s"
+                f"\t Acc: {acc:2.1f}% in {time.time() - start_t:.2f}s"
             )
             full_predictions = np.array(
                 [np.squeeze(self.forward(torch.Tensor(X)).detach().numpy()), Y]
@@ -108,16 +127,37 @@ class SymbolModel(torch.nn.Module):
             plot_vector_vs_time(
                 xyz=full_predictions,
                 t=t,
-                title=f"{name}.predicted vs actual.{epoch}",
+                title=f"{name}.train.{epoch}",
                 ax_titles=["pred", "actual"],
                 silent=True,
             )
 
+    def test_model(
+        self, X: np.ndarray, Y: np.ndarray, t: np.ndarray, name: Optional[str] = "model"
+    ):
+        print_line()
+        print(f"Beginning {name} test")
+        y_pred = np.squeeze(self.forward(torch.Tensor(X)).detach().numpy())
+        assert y_pred.shape == Y.shape
+        pred_vs_actual = np.array([y_pred, Y]).T
+        plot_vector_vs_time(
+            xyz=pred_vs_actual,
+            t=t,
+            title=f"{name}.test",
+            ax_titles=["pred", "actual"],
+        )
+        assert hasattr(self, "feature_names")
+        feature_names_small = [f[f.find("_") + 1 :] for f in self.feature_names]
+        visualize_importance(
+            self, feature_names_small, torch.Tensor(X), title=f"{name} importances"
+        )
+
 
 class SteeringModel(SymbolModel):
-    def __init__(self, in_dim: int):
+    def __init__(self, features: List[str]):
         super().__init__()
-        self.in_dim = in_dim
+        self.feature_names = features
+        self.in_dim = len(features)
         self.out_dim = 1  # outputting only a single scalar
         layers = [
             torch.nn.Linear(self.in_dim, 64),
@@ -135,10 +175,11 @@ class SteeringModel(SymbolModel):
 
 
 class ThrottleModel(SymbolModel):
-    def __init__(self, in_dim: int):
+    def __init__(self, features: List[str]):
         super().__init__()
+        self.feature_names = features
+        self.in_dim = len(features)
         self.loss_fn = torch.nn.L1Loss()  # more resistant to outliers
-        self.in_dim = in_dim
         self.out_dim = 1  # outputting only a single scalar
         layers = [
             torch.nn.Linear(self.in_dim, 128),
@@ -156,10 +197,11 @@ class ThrottleModel(SymbolModel):
 
 
 class BrakeModel(SymbolModel):
-    def __init__(self, in_dim: int):
+    def __init__(self, features: List[str]):
         super().__init__()
+        self.feature_names = features
+        self.in_dim = len(features)
         self.loss_fn = torch.nn.L1Loss()  # more resistant to outliers
-        self.in_dim = in_dim
         self.out_dim = 1  # outputting only a single scalar
         layers = [
             torch.nn.Linear(self.in_dim, 128),

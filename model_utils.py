@@ -174,7 +174,8 @@ def visualize_importance(
     plt.xticks(x_pos, feature_names, wrap=True, rotation=80)
     plt.xlabel(axis_title)
     plt.title(title)
-    save_figure_to_file(fig, "feature_importance.png")
+    clean_title = title.replace(" ", "_")
+    save_figure_to_file(fig, f"{clean_title}.png")
 
 
 def try_load_data(filename) -> Optional[Dict[str, Any]]:
