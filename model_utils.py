@@ -1,6 +1,7 @@
+import torch
 import os
 import numpy as np
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional
 from captum.attr import IntegratedGradients
 import matplotlib.pyplot as plt
 import pickle
@@ -200,8 +201,10 @@ def cache_data(data, filename):
     print(f"cached data to {filename}")
 
 
-def normalize_batch(data):
+def normalize_batch(data, exclude: List[str]):
     for k in data.keys():
+        if k in exclude:
+            continue
         try:
             x = data[k]
             mu = np.mean(x)
@@ -211,3 +214,8 @@ def normalize_batch(data):
         except Exception as e:
             pass
     return data
+
+
+def seed_everything(seed: int = 99):
+    np.random.seed(seed)
+    torch.manual_seed(seed)

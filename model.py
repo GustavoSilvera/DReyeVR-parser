@@ -11,6 +11,7 @@ from model_utils import (
     get_all_data,
     visualize_importance,
     normalize_batch,
+    seed_everything,
 )
 from models import DrivingModel
 from visualizer import (
@@ -22,9 +23,7 @@ from visualizer import (
 results_dir = "results.model"
 set_results_dir(results_dir)
 
-seed = 99
-np.random.seed(seed)
-torch.manual_seed(seed)
+seed_everything()
 
 """Get data"""
 argparser = argparse.ArgumentParser(description="DReyeVR recording parser")
@@ -61,7 +60,16 @@ if filename is None:
 
 # data = get_model_data(filename)
 data = get_all_data(filename)
-data = normalize_batch(data)
+# don't normalize time or steering/throttle/brake
+data = normalize_batch(
+    data,
+    exclude=[
+        "TimestampCarla_data",
+        "UserInputs_Steering",
+        "UserInputs_Throttle",
+        "UserInputs_Brake",
+    ],
+)
 
 """get data!!!"""
 t = data["TimestampCarla_data"]
@@ -136,7 +144,9 @@ if ckpt is not None:
     assert os.path.exists(ckpt)
     model.load_state_dict(torch.load(ckpt))
 
-model.begin_training(train_split["X"], train_split["Y"], t[:m])
+model.begin_training(
+    train_split["X"], train_split["Y"], test_split["X"], test_split["Y"], t[:m]
+)
 
 if num_epochs > 0:
     filename: str = os.path.join(results_dir, "model.pt")
@@ -144,7 +154,7 @@ if num_epochs > 0:
 
 model.begin_evaluation(test_split["X"], test_split["Y"], t[m:])
 
-# TODO: compute overall model 
+# TODO: compute overall model
 y_pred = model.forward(
     test_split["X"]["steering"],
     test_split["X"]["throttle"],

@@ -1,9 +1,10 @@
 from typing import Dict, List, Optional, Tuple
+import os
 import torch
 import numpy as np
 import time
 from visualizer import plot_vector_vs_time
-from model_utils import visualize_importance
+from model_utils import visualize_importance, seed_everything
 
 
 def print_line():
@@ -42,13 +43,24 @@ class DrivingModel(torch.nn.Module):
         self.brake_model.eval()
 
     def begin_training(
-        self, X: Dict[str, np.ndarray], Y: Dict[str, np.ndarray], t: np.ndarray
+        self,
+        X: Dict[str, np.ndarray],
+        Y: Dict[str, np.ndarray],
+        Xt: Dict[str, np.ndarray],
+        Yt: Dict[str, np.ndarray],
+        t: np.ndarray,
     ) -> None:
         self.train()
         # TODO: parallelize this
-        self.steering_model.train_model(X["steering"], Y["steering"], t)
-        self.throttle_model.train_model(X["throttle"], Y["throttle"], t)
-        self.brake_model.train_model(X["brake"], Y["brake"], t)
+        self.steering_model.train_model(
+            X["steering"], Y["steering"], Xt["steering"], Yt["steering"], t
+        )
+        self.throttle_model.train_model(
+            X["throttle"], Y["throttle"], Xt["throttle"], Yt["throttle"], t
+        )
+        self.brake_model.train_model(
+            X["brake"], Y["brake"], Xt["brake"], Yt["brake"], t
+        )
 
     def begin_evaluation(
         self, X: Dict[str, np.ndarray], Y: Dict[str, np.ndarray], t: np.ndarray
@@ -65,23 +77,26 @@ class SymbolModel(torch.nn.Module):
         super().__init__()
         self.name = name
         self.loss_fn = torch.nn.MSELoss()
-        self.num_epochs: int = 25
+        self.num_epochs: int = 35
+        self.lr = 0.001
+        self.optimizer_type = torch.optim.Adam
 
     def init_optim(self):
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=0.001)
-        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, "min"
-        )
+        self.optimizer = self.optimizer_type(self.parameters(), lr=self.lr)
+        self.scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(self.optimizer)
 
     def train_model(
         self,
         X: np.ndarray,
         Y: np.ndarray,
+        Xt: np.ndarray,
+        Yt: np.ndarray,
         t: np.ndarray,
     ) -> None:
         print_line()
+        seed_everything()
         print(f"Starting {self.name} model training for {self.num_epochs} epochs...")
-        acc_thresh = np.mean(np.abs(Y))
+        acc_thresh = np.mean(np.abs(Yt))
         accs = []
         losses = []
         for epoch in range(self.num_epochs):
@@ -103,14 +118,14 @@ class SymbolModel(torch.nn.Module):
             correct = 0
             with torch.no_grad():
                 self.eval()
-                for ix, x in enumerate(X):
+                for ix, x in enumerate(Xt):
                     data = torch.Tensor(x)
-                    desired = torch.Tensor([Y[ix]])
+                    desired = torch.Tensor([Yt[ix]])
                     outputs = self.forward(data)
                     correct += 1 if torch.abs(outputs - desired) < acc_thresh else 0
                     loss_crit = self.loss_fn(outputs, desired)
                     test_loss += loss_crit.item()
-                acc = 100 * correct / len(Y)
+                acc = 100 * correct / len(Yt)
                 accs.append(acc)
                 losses.append(test_loss)
             self.scheduler.step(test_loss)
@@ -128,6 +143,11 @@ class SymbolModel(torch.nn.Module):
                 ax_titles=["pred", "actual"],
                 silent=True,
             )
+        filename: str = os.path.join(
+            "results.model", f"{self.name}.model.{self.num_epochs}.pt"
+        )
+        print(f"saving state dict to {filename}")
+        torch.save(self.state_dict(), filename)
 
     def test_model(
         self,
@@ -159,6 +179,7 @@ class SteeringModel(SymbolModel):
         self.feature_names = features
         self.in_dim = len(features)
         self.out_dim = 1  # outputting only a single scalar
+        self.num_epochs = 50
         layers = [
             torch.nn.Linear(self.in_dim, 64),
             torch.nn.Linear(64, 128),
@@ -201,15 +222,16 @@ class BrakeModel(SymbolModel):
         super().__init__("brake")
         self.feature_names = features
         self.in_dim = len(features)
-        self.loss_fn = torch.nn.L1Loss()  # more resistant to outliers
         self.out_dim = 1  # outputting only a single scalar
         layers = [
-            torch.nn.Linear(self.in_dim, 128),
-            torch.nn.Linear(128, 256),
-            torch.nn.Linear(256, 256),
+            torch.nn.Linear(self.in_dim, 32),
+            torch.nn.Linear(32, 64),
+            torch.nn.Linear(64, 64),
             torch.nn.ReLU(),  # only positive
-            torch.nn.Linear(256, self.out_dim),
+            torch.nn.Linear(64, self.out_dim),
         ]
+        self.lr = 0.01
+        self.optimizer_type = torch.optim.Adagrad
         self.network = torch.nn.Sequential(*layers)
         self.init_optim()  # need to initalize optimizer after creating the network
 
