@@ -209,6 +209,7 @@ class ThrottleModel(SymbolModel):
             torch.nn.ReLU(),  # only positive
             torch.nn.Linear(256, self.out_dim),
         ]
+        self.optimizer_type = torch.optim.Adagrad
         self.network = torch.nn.Sequential(*layers)
         self.init_optim()  # need to initalize optimizer after creating the network
 
